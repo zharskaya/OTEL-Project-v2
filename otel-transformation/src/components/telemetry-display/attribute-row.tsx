@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Trash2, Undo2, GripVertical, SquareTerminal, Check, X, TextSelect, KeyRound } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,7 +11,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useTransformationActions, useTransformations } from '@/lib/state/hooks';
+import {
+  useTransformationActions,
+  useTransformationHighlightActions,
+  useTransformations,
+} from '@/lib/state/hooks';
 import { TransformationType, TransformationStatus } from '@/types/transformation-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
@@ -50,7 +54,13 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const hoverHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ottlInputRef = useRef<HTMLInputElement>(null);
   const { selection, clearSelection } = useTextSelection(valueRef);
-  const { addTransformation, removeTransformation, updateTransformation } = useTransformationActions();
+  const {
+    addTransformation,
+    removeTransformation,
+    updateTransformation,
+  } = useTransformationActions();
+  const { setHoveredTransformationIds, clearHoveredTransformationIds } =
+    useTransformationHighlightActions();
   const transformations = useTransformations();
 
   // Use sortable hook for draggable rows
@@ -326,13 +336,63 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
   };
 
+  const relatedTransformationIds = useMemo(() => {
+    const ids = new Set<string>();
+
+    for (const modification of attribute.modifications) {
+      if (modification.transformationId) {
+        ids.add(modification.transformationId);
+      }
+    }
+
+    if (deleteTransformation) {
+      ids.add(deleteTransformation.id);
+    }
+
+    if (maskTransformation) {
+      ids.add(maskTransformation.id);
+    }
+
+    if (renameTransformation) {
+      ids.add(renameTransformation.id);
+    }
+
+    if (addTransformationRecord) {
+      ids.add(addTransformationRecord.id);
+    }
+
+    return Array.from(ids);
+  }, [
+    attribute.modifications,
+    deleteTransformation?.id,
+    maskTransformation?.id,
+    renameTransformation?.id,
+    addTransformationRecord?.id,
+  ]);
+
+  const handleRowPointerEnter = () => {
+    setIsHovered(true);
+    if (relatedTransformationIds.length > 0) {
+      setHoveredTransformationIds(relatedTransformationIds);
+    } else {
+      clearHoveredTransformationIds();
+    }
+  };
+
   const handleRowPointerLeave = () => {
     setIsHovered(false);
     setIsValueHovered(false);
+    clearHoveredTransformationIds();
     if (!selection) {
       scheduleHoverHide();
     }
   };
+
+  React.useEffect(() => {
+    return () => {
+      clearHoveredTransformationIds();
+    };
+  }, [clearHoveredTransformationIds]);
 
   const selectEntireValue = () => {
     const fullText = getFullValueText();
@@ -513,9 +573,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         ref={setNodeRef}
         style={style}
         className={`relative flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none ${getRowBackgroundClass()} ${isRowHoverActive ? 'bg-gray-200' : ''}`}
-        onMouseEnter={() => setIsHovered(true)}
+        onMouseEnter={handleRowPointerEnter}
         onMouseLeave={handleRowPointerLeave}
         onPointerLeave={handleRowPointerLeave}
+        onFocusCapture={handleRowPointerEnter}
+        onBlurCapture={handleRowPointerLeave}
       >
         {/* Drag handle - positioned absolutely on the left, vertically centered, shown on hover */}
         {isHovered && (

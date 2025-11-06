@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
+import { useTransformations, useTransformationActions, useHighlightedTransformationIds } from '@/lib/state/hooks';
 import {
   Transformation,
   TransformationType,
@@ -195,6 +195,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
     useSortable({ id: transformation.id });
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const highlightedTransformationIds = useHighlightedTransformationIds();
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -205,6 +206,8 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const labelText = details.label;
   const sectionText = details.section ?? '';
   const descriptionContent = details.description;
+  const isHighlighted = highlightedTransformationIds.includes(transformation.id);
+  const highlightClass = isHighlighted ? 'bg-gray-300' : '';
 
   const showActions = isHovered || isFocused;
 
@@ -212,9 +215,11 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
+      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${
+        isHighlighted ? 'bg-gray-300' : 'bg-gray-100'
+      } ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
-      }`}
+      } ${highlightClass}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocusCapture={() => setIsFocused(true)}

@@ -10,6 +10,7 @@ interface TransformationStore {
   transformations: Transformation[];
   lastExecutionResult: TransformationResult | null;
   attributeOrder: Map<string, string[]>; // sectionId -> ordered attribute KEYS (not IDs)
+  hoveredTransformationIds: string[];
 
   // Actions
   addTransformation: (transformation: Transformation) => void;
@@ -22,6 +23,8 @@ interface TransformationStore {
   executeTransformations: (inputData: ResourceSpan) => TransformationResult;
   clearAll: () => void;
   setAttributeOrder: (sectionId: string, order: string[]) => void;
+  setHoveredTransformationIds: (ids: string[]) => void;
+  clearHoveredTransformationIds: () => void;
 
   // Selectors
   getTransformationsBySection: (sectionId: string) => Transformation[];
@@ -34,6 +37,7 @@ export const useTransformationStore = create<TransformationStore>(
     transformations: [],
     lastExecutionResult: null,
     attributeOrder: new Map(),
+    hoveredTransformationIds: [],
 
     addTransformation: (transformation) =>
       set((state) => ({
@@ -99,6 +103,11 @@ export const useTransformationStore = create<TransformationStore>(
         newOrder.set(sectionId, [...order]);
         return { attributeOrder: newOrder };
       }),
+
+    setHoveredTransformationIds: (ids) =>
+      set({ hoveredTransformationIds: Array.from(new Set(ids)) }),
+
+    clearHoveredTransformationIds: () => set({ hoveredTransformationIds: [] }),
 
     getTransformationsBySection: (sectionId) => {
       return get().transformations.filter((t) => t.sectionId === sectionId);

@@ -20,6 +20,8 @@ export function useTransformationActions() {
   const executeTransformations = useTransformationStore((state) => state.executeTransformations);
   const clearAll = useTransformationStore((state) => state.clearAll);
   const setAttributeOrder = useTransformationStore((state) => state.setAttributeOrder);
+  const setHoveredTransformationIds = useTransformationStore((state) => state.setHoveredTransformationIds);
+  const clearHoveredTransformationIds = useTransformationStore((state) => state.clearHoveredTransformationIds);
 
   return useMemo(
     () => ({
@@ -30,8 +32,34 @@ export function useTransformationActions() {
       executeTransformations,
       clearAll,
       setAttributeOrder,
+      setHoveredTransformationIds,
+      clearHoveredTransformationIds,
     }),
-    [addTransformation, updateTransformation, removeTransformation, reorderTransformations, executeTransformations, clearAll, setAttributeOrder]
+    [
+      addTransformation,
+      updateTransformation,
+      removeTransformation,
+      reorderTransformations,
+      executeTransformations,
+      clearAll,
+      setAttributeOrder,
+      setHoveredTransformationIds,
+      clearHoveredTransformationIds,
+    ]
+  );
+}
+
+export function useHighlightedTransformationIds() {
+  return useTransformationStore((state) => state.hoveredTransformationIds);
+}
+
+export function useTransformationHighlightActions() {
+  const setHoveredTransformationIds = useTransformationStore((state) => state.setHoveredTransformationIds);
+  const clearHoveredTransformationIds = useTransformationStore((state) => state.clearHoveredTransformationIds);
+
+  return useMemo(
+    () => ({ setHoveredTransformationIds, clearHoveredTransformationIds }),
+    [setHoveredTransformationIds, clearHoveredTransformationIds]
   );
 }
 
