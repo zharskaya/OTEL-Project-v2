@@ -107,7 +107,7 @@ export function TransformationQueuePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between bg-gray-100 px-3 py-3 min-h-[52px]">
+      <div className="flex items-center justify-between bg-gray-100 p-1 min-h-[44px]">
         <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>
@@ -158,9 +158,9 @@ export function TransformationQueuePanel({
               items={orderedTransformations.map((item) => item.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="space-y-1 px-3 py-3">
+              <div className="space-y-1 p-1">
                 {isRawOTTLFormOpen && (
-                  <div className="mb-2 rounded-md bg-gray-200">
+                  <div className="mb-2 rounded-md bg-gray-200 p-1">
                     <RawOTTLForm
                       sectionId={defaultSectionId}
                       onCancel={() => setIsRawOTTLFormOpen(false)}
@@ -169,7 +169,7 @@ export function TransformationQueuePanel({
                   </div>
                 )}
                 {orderedTransformations.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-gray-300 bg-white px-3 py-6 text-center text-sm text-gray-500">
+                  <div className="rounded-md border border-dashed border-gray-300 bg-white p-1 text-center text-sm text-gray-500">
                     No transformations yet. Add one from the telemetry tree to build a queue.
                   </div>
                 ) : (
@@ -223,11 +223,13 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const sectionText = details.section ?? '';
   const descriptionContent = details.description;
 
+  const showActions = isHovered || isFocused;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex items-center gap-1 px-2 py-1.5 mb-0.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
+      className={`relative mb-0.5 flex w-full items-center gap-2 px-2 py-1.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
       }`}
       onMouseEnter={() => setIsHovered(true)}
@@ -248,50 +250,50 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      {details.isRawOTTL ? (
-        <div className="flex flex-1 items-center gap-2 text-xs text-gray-600">
-          <SquareTerminal className="h-4 w-4 text-gray-500" />
-          <span className="font-mono break-words text-left text-gray-800">
-            {descriptionContent}
-          </span>
-        </div>
-      ) : (
-        <>
-          <div className="grid min-w-0 flex-1 grid-cols-[56px,104px,1fr] items-center gap-2 pr-2">
+      <div className="relative flex min-w-0 flex-1 items-center pr-10">
+        {details.isRawOTTL ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
+            <SquareTerminal className="h-4 w-4 text-gray-500" />
+            <span className="font-mono break-words text-left text-gray-800">
+              {descriptionContent}
+            </span>
+          </div>
+        ) : (
+          <div className="grid min-w-0 flex-1 grid-cols-[minmax(52px,max-content)_minmax(56px,1fr)_minmax(0,2fr)] items-start gap-1.5">
             <span
               className={`inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide ${details.labelClassName}`}
             >
               {labelText}
             </span>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            <span className="min-w-0 whitespace-normal break-words text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-tight">
               {sectionText}
             </span>
             <span className="text-xs text-gray-600 break-words">{descriptionContent}</span>
           </div>
-        </>
-      )}
-      <div className="flex h-7 w-7 items-center justify-center">
-        {(isHovered || isFocused) ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => onRemove(transformation.id)}
-                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
-                  aria-label="Delete transformation"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Delete transformation</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="h-4 w-4" aria-hidden="true" />
         )}
+      </div>
+      <div
+        className={`absolute inset-y-0 right-1 flex items-center transition-opacity ${
+          showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onRemove(transformation.id)}
+                className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+                aria-label="Delete transformation"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Delete transformation</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
