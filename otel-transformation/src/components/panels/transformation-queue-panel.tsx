@@ -385,6 +385,10 @@ function formatSectionLabel(sectionId: string): string {
   const baseId = sectionId.replace(/-\d+$/, '');
   const normalized = baseId.replace(/-/g, ' ').trim();
 
+  if (/^resource/i.test(normalized)) {
+    return 'Resource Attr';
+  }
+
   if (/^span info/i.test(normalized)) {
     return 'Span Info';
   }
