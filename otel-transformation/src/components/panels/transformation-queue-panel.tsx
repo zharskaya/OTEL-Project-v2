@@ -30,10 +30,7 @@ import {
   useHighlightedTransformationIds,
   useTransformationHighlightActions,
 } from '@/lib/state/hooks';
-import {
-  Transformation,
-  TransformationType,
-} from '@/types/transformation-types';
+import { Transformation, TransformationType } from '@/types/transformation-types';
 import { GripVertical, Trash2, SquareTerminal } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
