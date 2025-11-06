@@ -25,6 +25,24 @@ import { RenameKeyForm } from '@/components/transformations/rename-key-form';
 
 const BADGE_BASE_CLASS = 'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
 
+const formatRangeLabel = (
+  start: number,
+  end: number | 'end',
+  fullLength?: number
+): string => {
+  const resolvedEnd = end === 'end' ? fullLength ?? 'end' : end;
+  const isFullLength =
+    start === 0 &&
+    ((typeof resolvedEnd === 'number' && fullLength !== undefined && resolvedEnd >= fullLength) || end === 'end');
+
+  if (isFullLength) {
+    return '[Entire str]';
+  }
+
+  const endLabel = end === 'end' ? 'end' : String(end);
+  return `[${start}..${endLabel}]`;
+};
+
 interface AttributeRowProps {
   attribute: DisplayAttribute;
   isDraggable?: boolean;
@@ -220,6 +238,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     const activeSelection = selection ?? hoverSelection;
     if (!activeSelection) return;
 
+    const maskEndValue =
+      activeSelection.end >= activeSelection.fullText.length ? 'end' : activeSelection.end;
+
     addTransformation({
       id: `t-${Date.now()}`,
       type: TransformationType.MASK,
@@ -232,7 +253,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         attributePath: attribute.path,
         attributeKey: attribute.key,
         maskStart: activeSelection.start,
-        maskEnd: activeSelection.end,
+        maskEnd: maskEndValue,
         maskChar: '*',
       },
     });
@@ -243,12 +264,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     if (!activeSelection) return;
 
     if (onRequestSubstring) {
+      const substringEndValue =
+        activeSelection.end >= activeSelection.fullText.length ? 'end' : activeSelection.end;
       onRequestSubstring({
         sourceKey: attribute.key,
         sourcePath: attribute.path,
         sectionId: attribute.sectionId,
         substringStart: activeSelection.start,
-        substringEnd: activeSelection.end,
+        substringEnd: substringEndValue,
       });
     }
   };
@@ -471,19 +494,15 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
     if (isMasked && maskTransformation) {
       const params = maskTransformation.params as any;
-      // Check if masking entire string
-      const rawValue = attribute.value.replace(/^"|"$/g, ''); // Strip quotes for length check
-      const isEntireString = params.maskStart === 0 && 
-        (params.maskEnd === 'end' || params.maskEnd === rawValue.length);
-      
-      const range = isEntireString
-        ? '(Entire str)'
-        : params.maskEnd === 'end'
-          ? `(${params.maskStart}..end)`
-          : `(${params.maskStart}..${params.maskEnd})`;
+      const rawValue = attribute.value.replace(/^"|"$/g, '');
+      const rangeLabel = formatRangeLabel(
+        params.maskStart,
+        params.maskEnd,
+        rawValue.length
+      );
       return (
         <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
-          MASK {range}
+          MASK {rangeLabel}
         </span>
       );
     }
@@ -818,16 +837,19 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               />
               {(() => {
                 const substringTransformation = transformations.find(
-                  t => t.type === 'add-substring' && 
+                  t => t.type === 'add-substring' &&
                   (t.params as any).newKey === attribute.key &&
                   t.sectionId === attribute.sectionId
                 );
                 if (substringTransformation) {
                   const params = substringTransformation.params as any;
-                  const endValue = params.substringEnd === 'end' ? 'end' : params.substringEnd;
+                  const rangeLabel = formatRangeLabel(
+                    params.substringStart,
+                    params.substringEnd
+                  );
                   return (
                     <span className="font-mono text-[10px] text-gray-400 leading-none">
-                      SUBSTR({params.sourceKey}, {params.substringStart}–{endValue})
+                      SUBSTR({params.sourceKey}, {rangeLabel})
                     </span>
                   );
                 }
@@ -865,15 +887,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 const params = maskTransformation?.params as any;
                 if (!params) return null;
                 const rawValue = attribute.value.replace(/^"|"$/g, '');
-                const isEntireString = params.maskStart === 0 && (params.maskEnd === 'end' || params.maskEnd === rawValue.length);
-                const range = isEntireString
-                  ? '(Entire str)'
-                  : params.maskEnd === 'end'
-                    ? `(${params.maskStart}..end)`
-                    : `(${params.maskStart}..${params.maskEnd})`;
+                const rangeLabel = formatRangeLabel(
+                  params.maskStart,
+                  params.maskEnd,
+                  rawValue.length
+                );
                 return (
                   <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
-                    MASK {range}
+                    MASK {rangeLabel}
                   </span>
                 );
               })()}</div>

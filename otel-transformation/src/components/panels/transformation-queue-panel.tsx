@@ -326,7 +326,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         substringStart,
         substringEnd,
       } = transformation.params;
-      const range = formatRange(substringStart, substringEnd);
+      const rangeLabel = formatRangeLabel(substringStart, substringEnd);
       return {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
@@ -336,7 +336,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
             <span className="font-semibold text-gray-900">{newKey}</span>
             <span>{' = SUBSTR of '}</span>
             <span className="font-semibold text-gray-900">{sourceKey}</span>
-            <span>{` ${range}`}</span>
+            <span>{` ${rangeLabel}`}</span>
           </>
         ),
       };
@@ -355,6 +355,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
     }
     case TransformationType.MASK: {
       const { attributeKey, maskStart, maskEnd } = transformation.params;
+      const rangeLabel = formatRangeLabel(maskStart, maskEnd);
       return {
         label: 'MASK',
         labelClassName: 'bg-blue-600 text-white',
@@ -362,7 +363,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         description: (
           <>
             <span className="font-semibold text-gray-900">{attributeKey}</span>
-            <span>{` ${formatRange(maskStart, maskEnd)}`}</span>
+            <span>{` ${rangeLabel}`}</span>
           </>
         ),
       };
@@ -424,7 +425,11 @@ function formatSectionLabel(sectionId: string): string {
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase()).toUpperCase();
 }
 
-function formatRange(start: number, end: number | 'end'): string {
+function formatRangeLabel(start: number, end: number | 'end'): string {
+  if (start === 0 && end === 'end') {
+    return '[Entire str]';
+  }
+
   const endLabel = end === 'end' ? 'end' : end.toString();
   return `[${start}..${endLabel}]`;
 }

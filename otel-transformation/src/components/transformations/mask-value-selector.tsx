@@ -26,7 +26,7 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
   const rangeLabel = React.useMemo(() => {
     const isFullString = selection.start === 0 && selection.end === selection.fullText.length;
     const endValue = selection.end === selection.fullText.length ? 'end' : selection.end;
-    return isFullString ? 'Entire string' : `Substring (${selection.start}..${endValue})`;
+    return isFullString ? '[Entire str]' : `[${selection.start}..${endValue}]`;
   }, [selection.start, selection.end, selection.fullText.length]);
 
   // Handle Escape key to close
