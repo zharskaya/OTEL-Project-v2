@@ -17,6 +17,13 @@ import {
 } from '@/lib/state/hooks';
 
 export default function Home() {
+  const inputPanelWidth = 44;
+  const queuePanelWidth = 28;
+  const outputPanelWidth = 28;
+  const totalWidth = inputPanelWidth + queuePanelWidth + outputPanelWidth;
+  const outerSplitLeftWidth = (queuePanelWidth / totalWidth) * 100;
+  const innerSplitLeftWidth = (inputPanelWidth / (inputPanelWidth + outputPanelWidth)) * 100;
+
   const [inputTree, setInputTree] = useState(() =>
     TelemetryParser.parse(SAMPLE_TELEMETRY_DATA.resourceSpans)
   );
@@ -58,20 +65,20 @@ export default function Home() {
   return (
     <main className="h-screen w-screen overflow-hidden pb-14">
       <SplitPanel
-        initialLeftWidth={30}
+        initialLeftWidth={outerSplitLeftWidth}
         leftPanel={
-          <InputPanel>
-            <TelemetryTree tree={inputTree} />
-          </InputPanel>
+          <TransformationQueuePanel
+            onPreview={handleRun}
+            sections={inputTree.sections}
+          />
         }
         rightPanel={
           <SplitPanel
-            initialLeftWidth={57}
+            initialLeftWidth={innerSplitLeftWidth}
             leftPanel={
-              <TransformationQueuePanel
-                onPreview={handleRun}
-                sections={inputTree.sections}
-              />
+              <InputPanel>
+                <TelemetryTree tree={inputTree} />
+              </InputPanel>
             }
             rightPanel={
               <OutputPanel

@@ -15,7 +15,7 @@ export function InputPanel({ children }: InputPanelProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto bg-white p-3">{children}</div>
+      <div className="flex-1 overflow-auto bg-gray-50 p-3">{children}</div>
     </div>
   );
 }

@@ -321,6 +321,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         substringStart,
         substringEnd,
       } = transformation.params;
+      const range = formatRange(substringStart, substringEnd);
       return {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
@@ -328,9 +329,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         description: (
           <>
             <span className="font-semibold text-gray-900">{newKey}</span>
-            <span> from </span>
+            <span>{' = SUBSTR of '}</span>
             <span className="font-semibold text-gray-900">{sourceKey}</span>
-            <span>{` ${formatRange(substringStart, substringEnd)}`}</span>
+            <span>{` ${range}`}</span>
           </>
         ),
       };
@@ -370,7 +371,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         description: (
           <>
             <span className="font-semibold text-gray-900">{oldKey}</span>
-            <span> to </span>
+            <span>{' → '}</span>
             <span className="font-semibold text-gray-900">{newKey}</span>
           </>
         ),

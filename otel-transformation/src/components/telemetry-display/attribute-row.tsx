@@ -18,6 +18,8 @@ import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection'
 import { MaskValueSelector } from '@/components/transformations/mask-value-selector';
 import { RenameKeyForm } from '@/components/transformations/rename-key-form';
 
+const BADGE_BASE_CLASS = 'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
+
 interface AttributeRowProps {
   attribute: DisplayAttribute;
   isDraggable?: boolean;
@@ -376,7 +378,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     if (isDeleted) {
       const text = movedKeys.has(attribute.key) ? 'MOVED OUT' : 'DELETE';
       return (
-        <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-800">
+        <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white`}>
           {text}
         </span>
       );
@@ -395,7 +397,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
           ? `(${params.maskStart}..end)`
           : `(${params.maskStart}..${params.maskEnd})`;
       return (
-        <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+        <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
           MASK {range}
         </span>
       );
@@ -403,7 +405,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
     if (isRenamed) {
       return (
-        <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+        <span className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
           RENAME KEY
         </span>
       );
@@ -413,22 +415,20 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     
     const modification = attribute.modifications[0];
     const labelMap: Record<string, { text: string; color: string }> = {
-      'add': { text: 'ADD', color: 'bg-green-100 text-green-800' },
-      'add-static': { text: 'ADD', color: 'bg-green-100 text-green-800' },
-      'add-substring': { text: 'ADD', color: 'bg-green-100 text-green-800' },
-      'raw-ottl': { text: 'OTTL', color: 'bg-purple-100 text-purple-800' },
-      'delete': { text: 'DELETE', color: 'bg-red-100 text-red-800' },
-      'mask': { text: 'MASK', color: 'bg-blue-100 text-blue-800' },
-      'rename-key': { text: 'RENAME KEY', color: 'bg-blue-100 text-blue-800' },
+      'add': { text: 'ADD', color: 'bg-green-600 text-white' },
+      'add-static': { text: 'ADD', color: 'bg-green-600 text-white' },
+      'add-substring': { text: 'ADD', color: 'bg-green-600 text-white' },
+      'raw-ottl': { text: 'OTTL', color: 'bg-purple-600 text-white' },
+      'delete': { text: 'DELETE', color: 'bg-red-600 text-white' },
+      'mask': { text: 'MASK', color: 'bg-blue-600 text-white' },
+      'rename-key': { text: 'RENAME KEY', color: 'bg-indigo-600 text-white' },
     };
 
     const label = labelMap[modification.type];
     if (!label) return null;
 
     return (
-      <span
-        className={`rounded px-1.5 py-0.5 text-xs font-medium ${label.color}`}
-      >
+      <span className={`${BADGE_BASE_CLASS} ${label.color}`}>
         {label.text}
       </span>
     );
@@ -778,13 +778,13 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                     ? `(${params.maskStart}..end)`
                     : `(${params.maskStart}..${params.maskEnd})`;
                 return (
-                  <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                  <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
                     MASK {range}
                   </span>
                 );
               })()}</div>
               <div>
-                <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                <span className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
                   RENAME KEY
                 </span>
               </div>
