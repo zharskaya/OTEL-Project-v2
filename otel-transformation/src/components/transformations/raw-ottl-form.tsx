@@ -8,7 +8,7 @@ import { TransformationType, TransformationStatus } from '@/types/transformation
 interface RawOTTLFormProps {
   sectionId: string;
   onCancel: () => void;
-  onSave: () => void;
+  onSave: (transformationId: string) => void;
 }
 
 export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
@@ -32,8 +32,10 @@ export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
 
     // Raw OTTL: display exactly what user enters (no parsing)
     // Create raw OTTL transformation
+    const transformationId = `t-${Date.now()}`;
+
     addTransformation({
-      id: `t-${Date.now()}`,
+      id: transformationId,
       type: TransformationType.RAW_OTTL,
       order: 0, // Will be assigned by store
       sectionId,
@@ -46,7 +48,7 @@ export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
       },
     });
 
-    onSave();
+    onSave(transformationId);
   };
 
   const handleClickOutside = (e: React.MouseEvent) => {

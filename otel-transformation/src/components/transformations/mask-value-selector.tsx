@@ -24,9 +24,9 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
   onPointerLeave,
 }: MaskValueSelectorProps) {
   const rangeLabel = React.useMemo(() => {
-    const isFullString = selection.start === 0 && selection.end === selection.fullText.length;
-    const endValue = selection.end === selection.fullText.length ? 'end' : selection.end;
-    return isFullString ? '[Entire str]' : `[${selection.start}..${endValue}]`;
+    const isEnd = selection.end >= selection.fullText.length;
+    const endValue = isEnd ? 'end' : selection.end;
+    return `[${selection.start}..${endValue}]`;
   }, [selection.start, selection.end, selection.fullText.length]);
 
   // Handle Escape key to close
@@ -62,7 +62,7 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
         onMouseLeave={onPointerLeave}
       >
         <div className="mb-3 text-center">
-          <p className="text-xs font-semibold text-white leading-tight">{rangeLabel}</p>
+          <p className="text-xs font-semibold text-white leading-tight">Substring {rangeLabel}</p>
         </div>
         <div className="flex items-center justify-center gap-2">
           <button

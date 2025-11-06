@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, SquareTerminal } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -16,6 +16,7 @@ interface SectionHeaderProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   onAddStatic: () => void;
+  onAddRawOTTL: () => void;
 }
 
 export function SectionHeader({
@@ -24,6 +25,7 @@ export function SectionHeader({
   isExpanded,
   onToggleExpand,
   onAddStatic,
+  onAddRawOTTL,
 }: SectionHeaderProps) {
   const updateCount = useUpdateCount(sectionId);
 
@@ -51,6 +53,25 @@ export function SectionHeader({
         
         {/* Button group with tighter spacing */}
         <div className="flex items-center gap-1">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddRawOTTL();
+                }}
+                className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                aria-label="Add raw OTTL statement"
+              >
+                <SquareTerminal className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Add raw OTTL statement</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

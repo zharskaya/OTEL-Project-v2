@@ -23,6 +23,7 @@ export function RenameKeyForm({
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
   const { addTransformation } = useTransformationActions();
+  const hasSavedRef = useRef(false);
 
   // Focus on mount and select all text
   useEffect(() => {
@@ -31,6 +32,9 @@ export function RenameKeyForm({
   }, []);
 
   const handleSave = () => {
+    if (hasSavedRef.current) {
+      return;
+    }
     const trimmed = newKey.trim();
     if (trimmed === '') {
       alert('Cannot rename attribute. Key cannot be empty.');
@@ -43,19 +47,38 @@ export function RenameKeyForm({
       return;
     }
 
-    // Create RENAME_KEY transformation
+    hasSavedRef.current = true;
+
+    const timestamp = Date.now();
+
+    // 1. Add the new key with the existing value
     addTransformation({
-      id: `t-${Date.now()}`,
-      type: TransformationType.RENAME_KEY,
+      id: `t-${timestamp}-add-rename`,
+      type: TransformationType.ADD_STATIC,
       order: 0,
       sectionId,
       createdAt: new Date(),
       status: TransformationStatus.ACTIVE,
       params: {
-        type: TransformationType.RENAME_KEY,
+        type: TransformationType.ADD_STATIC,
+        key: trimmed,
+        value: oldKey,
+        insertionPoint: sectionId,
+      },
+    });
+
+    // 2. Delete the old key
+    addTransformation({
+      id: `t-${timestamp}-delete-rename`,
+      type: TransformationType.DELETE,
+      order: 0,
+      sectionId,
+      createdAt: new Date(),
+      status: TransformationStatus.ACTIVE,
+      params: {
+        type: TransformationType.DELETE,
         attributePath,
-        oldKey,
-        newKey: trimmed,
+        attributeKey: oldKey,
       },
     });
 

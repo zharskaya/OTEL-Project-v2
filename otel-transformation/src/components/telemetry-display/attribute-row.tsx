@@ -243,9 +243,13 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     });
   };
 
-  const handleUndo = () => {
-    setIsEditingAddStaticValue(false);
+  const stopEditingAddStaticValue = () => {
     setAddStaticValueDraft('');
+    setIsEditingAddStaticValue(false);
+  };
+
+  const handleUndo = () => {
+    stopEditingAddStaticValue();
     if (deleteTransformation) {
       removeTransformation(deleteTransformation.id);
     }
@@ -302,6 +306,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
   };
 
+  const handleStartRenaming = () => {
+    stopEditingAddStaticValue();
+    setIsRenaming(true);
+  };
+
   const handleStartEditAddStaticValue = () => {
     if (!isAddStatic || !addTransformationRecord) {
       return;
@@ -309,11 +318,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     const params = addTransformationRecord.params as AddStaticParams;
     setAddStaticValueDraft(params.value ?? '');
     setIsEditingAddStaticValue(true);
+    setIsRenaming(false);
   };
 
   const handleCancelAddStaticValue = () => {
-    setAddStaticValueDraft('');
-    setIsEditingAddStaticValue(false);
+    stopEditingAddStaticValue();
   };
 
   const handleSaveAddStaticValue = () => {
@@ -860,7 +869,12 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 <TooltipTrigger asChild>
                   <span
                     className={`font-mono text-xs leading-none ${isDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'}`}
-                    onClick={() => !isDeleted && setIsRenaming(true)}
+                    onClick={() => {
+                      if (isDeleted) {
+                        return;
+                      }
+                      handleStartRenaming();
+                    }}
                   >
                     {attribute.key}
                   </span>
@@ -1058,8 +1072,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                   <TooltipTrigger asChild>
                     <button
                       onClick={() => {
-                    if (!isDeleted) {
-                          setIsRenaming(true);
+                        if (!isDeleted) {
+                          handleStartRenaming();
                         }
                       }}
                       className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
