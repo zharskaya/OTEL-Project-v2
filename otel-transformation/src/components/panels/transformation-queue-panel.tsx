@@ -34,12 +34,10 @@ import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
 
 interface TransformationQueuePanelProps {
-  onPreview: () => void;
   sections: TelemetrySection[];
 }
 
 export function TransformationQueuePanel({
-  onPreview,
   sections,
 }: TransformationQueuePanelProps) {
   const transformations = useTransformations();
@@ -107,7 +105,7 @@ export function TransformationQueuePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between bg-gray-100 p-1 min-h-[44px]">
+      <div className="flex items-center justify-between bg-gray-100 px-2 py-1 min-h-[44px]">
         <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>
@@ -124,21 +122,6 @@ export function TransformationQueuePanel({
               </TooltipTrigger>
               <TooltipContent>
                 <p>Add raw OTTL statement</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={onPreview}
-                  className="flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
-                >
-                  Preview
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Preview transformed data (⌘/Ctrl + Enter)</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -229,7 +212,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative mb-0.5 flex w-full items-center gap-2 px-2 py-1.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
+      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
       }`}
       onMouseEnter={() => setIsHovered(true)}

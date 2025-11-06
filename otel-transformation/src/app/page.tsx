@@ -68,7 +68,6 @@ export default function Home() {
         initialLeftWidth={outerSplitLeftWidth}
         leftPanel={
           <TransformationQueuePanel
-            onPreview={handleRun}
             sections={inputTree.sections}
           />
         }
@@ -76,7 +75,7 @@ export default function Home() {
           <SplitPanel
             initialLeftWidth={innerSplitLeftWidth}
             leftPanel={
-              <InputPanel>
+              <InputPanel onPreview={handleRun}>
                 <TelemetryTree tree={inputTree} />
               </InputPanel>
             }
