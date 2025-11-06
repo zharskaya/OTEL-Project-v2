@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
-import { Trash2, Undo2, GripVertical, SquareTerminal, Check, X, TextSelect, KeyRound } from 'lucide-react';
+import { Trash2, Undo2, GripVertical, SquareTerminal, Check, X, TextSelect, KeyRound, PenLine } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DisplayAttribute, ValueType } from '@/types/telemetry-types';
@@ -17,7 +17,7 @@ import {
   useHighlightedTransformationIds,
   useTransformations,
 } from '@/lib/state/hooks';
-import { TransformationType, TransformationStatus } from '@/types/transformation-types';
+import { TransformationType, TransformationStatus, type AddStaticParams } from '@/types/transformation-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
 import { MaskValueSelector } from '@/components/transformations/mask-value-selector';
@@ -72,6 +72,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const valueRef = useRef<HTMLSpanElement>(null);
   const hoverHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ottlInputRef = useRef<HTMLInputElement>(null);
+  const addStaticValueInputRef = useRef<HTMLInputElement>(null);
+  const [isEditingAddStaticValue, setIsEditingAddStaticValue] = useState(false);
+  const [addStaticValueDraft, setAddStaticValueDraft] = useState('');
   const { selection, clearSelection } = useTextSelection(valueRef);
   const {
     addTransformation,
@@ -129,15 +132,10 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const isAdded = attribute.modifications.some(m => 
     m.type === 'add-static' || m.type === 'add-substring' || m.type === 'raw-ottl'
   );
-  const hasAnyModification =
-    attribute.modifications.length > 0 ||
-    isDeleted ||
-    isMasked ||
-    isRenamed ||
-    isAdded ||
-    attribute.isRawOTTL;
-  
-  // Find the add transformation record if this is an added attribute
+  const hasAddStaticModification = attribute.modifications.some((modification) => modification.type === 'add-static');
+  const hasAddSubstringModification = attribute.modifications.some((modification) => modification.type === 'add-substring');
+  const isAddStatic = isAdded && hasAddStaticModification;
+  const isAddSubstring = isAdded && hasAddSubstringModification;
   const addTransformationRecord = isAdded ? 
     transformations.find(t => 
       (t.type === TransformationType.ADD_STATIC || 
@@ -145,6 +143,21 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
        t.type === TransformationType.RAW_OTTL) &&
       attribute.modifications.some(m => m.transformationId === t.id)
     ) : null;
+  const addStaticInitialInput = useMemo(() => {
+    if (!isAddStatic || !addTransformationRecord) {
+      return '';
+    }
+    const params = addTransformationRecord.params as AddStaticParams;
+    const value = params.value ?? '';
+    return `${params.key}=${value}`;
+  }, [isAddStatic, addTransformationRecord]);
+  const hasAnyModification =
+    attribute.modifications.length > 0 ||
+    isDeleted ||
+    isMasked ||
+    isRenamed ||
+    isAdded ||
+    attribute.isRawOTTL;
 
   const cancelHoverHide = () => {
     if (hoverHideTimeoutRef.current) {
@@ -200,6 +213,17 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   React.useEffect(() => () => cancelHoverHide(), []);
 
+  React.useEffect(() => {
+    if (!isEditingAddStaticValue) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      addStaticValueInputRef.current?.focus();
+      addStaticValueInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [isEditingAddStaticValue]);
+
   const handleDelete = () => {
     const attributeValue = attribute.value ?? '';
 
@@ -220,6 +244,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const handleUndo = () => {
+    setIsEditingAddStaticValue(false);
+    setAddStaticValueDraft('');
     if (deleteTransformation) {
       removeTransformation(deleteTransformation.id);
     }
@@ -276,6 +302,48 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
   };
 
+  const handleStartEditAddStaticValue = () => {
+    if (!isAddStatic || !addTransformationRecord) {
+      return;
+    }
+    const params = addTransformationRecord.params as AddStaticParams;
+    setAddStaticValueDraft(params.value ?? '');
+    setIsEditingAddStaticValue(true);
+  };
+
+  const handleCancelAddStaticValue = () => {
+    setAddStaticValueDraft('');
+    setIsEditingAddStaticValue(false);
+  };
+
+  const handleSaveAddStaticValue = () => {
+    if (!isAddStatic || !addTransformationRecord) {
+      return;
+    }
+    const params = addTransformationRecord.params as AddStaticParams;
+    if (params.value === addStaticValueDraft) {
+      setIsEditingAddStaticValue(false);
+      return;
+    }
+    updateTransformation(addTransformationRecord.id, {
+      params: {
+        ...params,
+        value: addStaticValueDraft,
+      },
+    });
+    setIsEditingAddStaticValue(false);
+  };
+
+  const handleAddStaticValueKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleSaveAddStaticValue();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleCancelAddStaticValue();
+    }
+  };
+
   const handleEditOTTL = () => {
     setOttlStatement(attribute.value);
     setIsEditingOTTL(true);
@@ -328,7 +396,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const handleValueMouseEnter = () => {
-    if (isDeleted || isMasked) {
+    if (isDeleted) {
       setIsValueHovered(true);
       return;
     }
@@ -349,15 +417,19 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const handleValueKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (isDeleted || isMasked) {
+    if (isDeleted) {
       return;
     }
 
     if (event.key === 'Enter') {
       event.preventDefault();
-      setIsValueHovered(true);
-      selectEntireValue();
-      cancelHoverHide();
+      if (isAddStatic) {
+        handleStartEditAddStaticValue();
+      } else {
+        setIsValueHovered(true);
+        selectEntireValue();
+        cancelHoverHide();
+      }
     }
   };
 
@@ -589,7 +661,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const activeSelection = selection ?? hoverSelection;
-  const isValueInteractive = !isDeleted && !isMasked;
+  const isValueInteractive = !isDeleted;
   const hasActiveSelection = !!activeSelection;
   const shouldShowMaskSelector = hasActiveSelection && isValueInteractive;
   const maskAndRename = isMasked && isRenamed && maskTransformation && renameTransformation;
@@ -600,12 +672,18 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     [highlightedTransformationIds, relatedTransformationIds]
   );
 
-  const isRowHoverActive = isHovered || shouldShowMaskSelector || isHighlightedByQueue;
+  const isRowHoverActive =
+    isHovered || shouldShowMaskSelector || isHighlightedByQueue || isEditingAddStaticValue;
+  const shouldShowSelectAction =
+    !isDeleted &&
+    (!hasAnyModification || isRenamed || isMasked || isAddSubstring);
+  const shouldShowEditAddedAction = !isDeleted && isAddStatic && !attribute.isRawOTTL;
   const shouldShowValueTooltip =
-    isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered;
+    isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
+  const valueTooltipMessage = isAddStatic ? 'Click to edit static value' : 'Select to transform';
 
   const openSelectionTooltip = () => {
-    if (!isValueInteractive) {
+    if (!isValueInteractive || isEditingAddStaticValue) {
       return;
     }
     selectEntireValue();
@@ -801,22 +879,56 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
         {/* Value - always starts at the same position */}
         <div className="flex-1 min-w-0">
-          <TooltipProvider delayDuration={0}>
-            <Tooltip open={shouldShowValueTooltip}>
-              <TooltipTrigger asChild>
-                <div
-                  ref={valueContainerRef}
-                  className={`inline-flex max-w-full leading-none focus:outline-none ${isValueInteractive ? 'cursor-pointer' : 'cursor-default'}`}
-                  tabIndex={isValueInteractive ? 0 : -1}
-                  onMouseEnter={handleValueMouseEnter}
-                  onMouseLeave={handleValueMouseLeave}
-                  onPointerLeave={handleValueMouseLeave}
-                  onKeyDown={handleValueKeyDown}
-                  role="textbox"
-                  aria-readonly="true"
-                >
+          {isEditingAddStaticValue && isAddStatic ? (
+            <div className="flex w-full items-center gap-1">
+              <input
+                ref={addStaticValueInputRef}
+                type="text"
+                value={addStaticValueDraft}
+                onChange={(event) => setAddStaticValueDraft(event.target.value)}
+                onKeyDown={handleAddStaticValueKeyDown}
+                className="flex-1 rounded-md border border-blue-300 bg-white px-3 py-1.5 font-mono text-xs text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 leading-tight"
+                placeholder="Enter value"
+              />
+              <button
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleSaveAddStaticValue}
+                className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                aria-label="Save value"
+              >
+                <Check className="h-4 w-4" />
+              </button>
+              <button
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleCancelAddStaticValue}
+                className="rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                aria-label="Cancel editing value"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip open={shouldShowValueTooltip}>
+                <TooltipTrigger asChild>
+                  <div
+                    ref={valueContainerRef}
+                    className={`inline-flex max-w-full leading-none focus:outline-none ${isValueInteractive ? 'cursor-pointer' : 'cursor-default'}`}
+                    tabIndex={isValueInteractive ? 0 : -1}
+                    onMouseEnter={handleValueMouseEnter}
+                    onMouseLeave={handleValueMouseLeave}
+                    onPointerLeave={handleValueMouseLeave}
+                    onKeyDown={handleValueKeyDown}
+                    onClick={() => {
+                      if (isAddStatic) {
+                        handleStartEditAddStaticValue();
+                      }
+                    }}
+                    role="textbox"
+                    aria-readonly="true"
+                  >
           {isMasked ? (
-            <span className="flex flex-col gap-1 leading-none">
+            <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <span className="font-mono text-xs text-emerald-600 leading-none">
                 {getMaskedValue()}
               </span>
@@ -825,11 +937,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               </span>
             </span>
           ) : isDeleted ? (
-            <span className={`font-mono text-xs ${getTextClass()} leading-none`}>
+            <span ref={valueRef} className={`font-mono text-xs ${getTextClass()} leading-none`}>
               {attribute.value}
             </span>
           ) : attribute.modifications.some(m => m.type === 'add-substring') ? (
-            <span className="flex flex-col gap-1 leading-none">
+            <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <SyntaxHighlighter
                 value={attribute.value}
                 valueType={attribute.valueType}
@@ -868,15 +980,16 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               />
             </span>
           )}
-                </div>
-              </TooltipTrigger>
-              {shouldShowValueTooltip && (
-                <TooltipContent>
-                  <p>Select to transform</p>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+                  </div>
+                </TooltipTrigger>
+                {shouldShowValueTooltip && (
+                  <TooltipContent>
+                    <p>{valueTooltipMessage}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         {/* Modification label - always visible on the right */}
@@ -910,7 +1023,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         )}
 
         {/* Action buttons - positioned absolutely on the right */}
-        {isHovered && !isRenaming && !shouldShowMaskSelector && (
+        {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && (
           <div
             className="absolute right-0 flex items-center gap-1"
             onMouseEnter={() => setIsActionHovered(true)}
@@ -918,7 +1031,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
             onPointerEnter={() => setIsActionHovered(true)}
             onPointerLeave={() => setIsActionHovered(false)}
           >
-            {(!hasAnyModification || (isRenamed && !isDeleted && !isMasked)) && (
+            {shouldShowSelectAction && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -957,6 +1070,24 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Rename key</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {shouldShowEditAddedAction && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleStartEditAddStaticValue}
+                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
+                      aria-label="Edit value"
+                    >
+                      <PenLine className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Edit value</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

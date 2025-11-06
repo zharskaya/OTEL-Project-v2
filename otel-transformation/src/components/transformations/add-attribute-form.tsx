@@ -9,14 +9,18 @@ interface AddAttributeFormProps {
   sectionId: string;
   onCancel: () => void;
   onSave: () => void;
+  initialInput?: string;
+  onSubmit?: (payload: { key: string; value: string }) => void;
 }
 
 export function AddAttributeForm({
   sectionId,
   onCancel,
   onSave,
+  initialInput,
+  onSubmit,
 }: AddAttributeFormProps) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialInput ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
   const { addTransformation } = useTransformationActions();
 
@@ -24,6 +28,10 @@ export function AddAttributeForm({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setInput(initialInput ?? '');
+  }, [initialInput]);
 
   const handleSave = () => {
     const trimmed = input.trim();
@@ -62,21 +70,25 @@ export function AddAttributeForm({
       return;
     }
 
-    // Create transformation
-    addTransformation({
-      id: `t-${Date.now()}`,
-      type: TransformationType.ADD_STATIC,
-      order: 0, // Will be assigned by store
-      sectionId,
-      createdAt: new Date(),
-      status: TransformationStatus.ACTIVE,
-      params: {
+    if (onSubmit) {
+      onSubmit({ key, value });
+    } else {
+      // Create transformation
+      addTransformation({
+        id: `t-${Date.now()}`,
         type: TransformationType.ADD_STATIC,
-        key,
-        value,
-        insertionPoint: sectionId,
-      },
-    });
+        order: 0, // Will be assigned by store
+        sectionId,
+        createdAt: new Date(),
+        status: TransformationStatus.ACTIVE,
+        params: {
+          type: TransformationType.ADD_STATIC,
+          key,
+          value,
+          insertionPoint: sectionId,
+        },
+      });
+    }
 
     onSave();
   };
@@ -103,7 +115,7 @@ export function AddAttributeForm({
 
   return (
     <div
-      className="flex items-center gap-1 bg-gray-300 px-4 py-2"
+      className="flex w-full items-center gap-1 bg-gray-300 px-4 py-2"
       onClick={handleClickOutside}
     >
       <input

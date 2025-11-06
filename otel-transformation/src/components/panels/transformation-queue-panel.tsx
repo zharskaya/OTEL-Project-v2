@@ -107,7 +107,7 @@ export function TransformationQueuePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between bg-gray-100 px-2 py-1 min-h-[44px]">
+      <div className="flex items-center justify-between bg-white border-b border-gray-200 px-2 py-1 min-h-[44px]">
         <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>

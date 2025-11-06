@@ -6,13 +6,14 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { TelemetrySection, ValueType, ModificationColor, DisplayAttribute } from '@/types/telemetry-types';
-import { TransformationType } from '@/types/transformation-types';
 import { AttributeRow } from './attribute-row';
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
+import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
+import { TransformationType, type RawOTTLParams } from '@/types/transformation-types';
 
 interface TreeSectionProps {
   section: TelemetrySection;
@@ -25,6 +26,7 @@ interface TreeSectionProps {
 export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletionId, movedKeys }: TreeSectionProps) {
   const [isExpanded, setIsExpanded] = useState(section.expanded);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showRawOTTLForm, setShowRawOTTLForm] = useState(false);
   const [showSubstringForm, setShowSubstringForm] = useState(false);
   const [substringParams, setSubstringParams] = useState<{
     sourceKey: string;
@@ -55,9 +57,9 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   );
 
   // Get newly added attributes from transformations
-  const addedAttributes = React.useMemo(() => {
+  const addedStaticOrSubstring = React.useMemo(() => {
     return sectionTransformations
-      .filter(t => t.type === 'add-static' || t.type === 'add-substring')
+      .filter(t => t.type === TransformationType.ADD_STATIC || t.type === TransformationType.ADD_SUBSTRING)
       .map((t, idx) => {
         const params = t.params as any;
         // Create unique ID using stable transformation ID
@@ -68,7 +70,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         // For substring attributes, compute the extracted value
         let displayValue = params.value || '';
         let sourceAttrPath = undefined;
-        if (t.type === 'add-substring') {
+        if (t.type === TransformationType.ADD_SUBSTRING) {
           // Find the source attribute
           const sourceAttr = section.attributes.find(attr => attr.key === params.sourceKey);
           if (sourceAttr) {
@@ -105,29 +107,50 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       });
   }, [sectionTransformations, section.id, section.attributes]);
 
+  const rawOTTLAttributes = React.useMemo(() => {
+    return sectionTransformations
+      .filter((transformation) => transformation.type === TransformationType.RAW_OTTL)
+      .map((transformation) => {
+        const params = transformation.params as RawOTTLParams;
+
+        return {
+          id: `raw-ottl-${transformation.id}`,
+          path: `${section.id}.raw-ottl-${transformation.id}`,
+          sectionId: section.id,
+          key: transformation.id,
+          value: params.statement,
+          valueType: ValueType.STRING,
+          depth: 0,
+          modifications: [
+            {
+              transformationId: transformation.id,
+              type: transformation.type,
+              label: 'OTTL',
+              color: ModificationColor.BLUE,
+            },
+          ],
+          isRawOTTL: true,
+        } satisfies DisplayAttribute;
+      });
+  }, [sectionTransformations, section.id]);
+
   // Combine original attributes with added attributes based on creation logic
   const baseAttributes = React.useMemo(() => {
-    const result: DisplayAttribute[] = [];
-    const substringAttrs = addedAttributes.filter(a => a.sourceAttributePath);
-    const staticAddedAttrs = addedAttributes.filter(a => !a.sourceAttributePath);
-    
-    // Add non-substring attributes at the top (newest first - most recent addition goes to position 0)
-    result.push(...[...staticAddedAttrs].reverse());
-    
-    // Then add original attributes with substring attributes inserted ABOVE their source
+    const substringAttrs = addedStaticOrSubstring.filter(a => a.sourceAttributePath);
+    const staticAddedAttrs = addedStaticOrSubstring.filter(a => !a.sourceAttributePath);
+
+    const staticAtTop = [...staticAddedAttrs].reverse();
+    const rawOttlEntries = [...rawOTTLAttributes].reverse();
+    const orderedAttributes: DisplayAttribute[] = [];
+
     for (const attr of section.attributes) {
-      // Find any substring attributes that were extracted from this attribute
       const substringsBefore = substringAttrs.filter(sa => sa.sourceAttributePath === attr.path);
-      
-      // Insert substring attributes ABOVE (before) their source attribute
-      result.push(...substringsBefore);
-      
-      // Then add the original attribute
-      result.push(attr);
+      orderedAttributes.push(...substringsBefore);
+      orderedAttributes.push(attr);
     }
-    
-    return result;
-  }, [addedAttributes, section.attributes]);
+
+    return [...staticAtTop, ...rawOttlEntries, ...orderedAttributes];
+  }, [addedStaticOrSubstring, rawOTTLAttributes, section.attributes]);
   
   // Initialize stored order if it doesn't exist (only runs once per section, ever)
   const hasInitialized = React.useRef(false);
@@ -243,7 +266,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   // Get all deleted attribute paths for this section
   const deletedAttributePaths = new Set(
     transformations
-      .filter(t => t.type === TransformationType.DELETE && t.sectionId === section.id)
+      .filter(t => t.type === 'delete' && t.sectionId === section.id)
       .map(t => (t.params as any).attributePath)
   );
 
@@ -279,6 +302,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     setShowAddForm(false);
     setShowSubstringForm(false);
     setSubstringParams(null);
+    setShowRawOTTLForm(false);
   };
 
   return (
@@ -290,6 +314,11 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         isExpanded={isExpanded}
         onToggleExpand={toggleExpand}
         onAddStatic={handleAddStatic}
+        onAddRawOTTL={() => {
+          setShowRawOTTLForm((prev) => !prev);
+          setShowAddForm(false);
+          setShowSubstringForm(false);
+        }}
       />
 
       {/* Section Content */}
@@ -302,6 +331,17 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
               sectionId={section.id}
               onCancel={handleFormClose}
               onSave={handleFormClose}
+            />
+          )}
+
+          {/* Raw OTTL form */}
+          {showRawOTTLForm && (
+            <RawOTTLForm
+              sectionId={section.id}
+              onCancel={handleFormClose}
+              onSave={(_transformationId) => {
+                handleFormClose();
+              }}
             />
           )}
 
