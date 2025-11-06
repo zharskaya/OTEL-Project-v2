@@ -39,7 +39,7 @@ export class TelemetryParser {
         this.createSection(
           `resource-${rsIndex}`,
           SectionType.RESOURCE,
-          'Resource',
+          'Resource Attributes',
           true,
           resourceAttributes
         )

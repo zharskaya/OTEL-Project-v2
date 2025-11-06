@@ -383,8 +383,16 @@ function getRowDetails(transformation: Transformation): RowDetails {
 function formatSectionLabel(sectionId: string): string {
   if (!sectionId) return '';
   const baseId = sectionId.replace(/-\d+$/, '');
-  return baseId
-    .replace(/-/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const normalized = baseId.replace(/-/g, ' ').trim();
+
+  if (/^span info/i.test(normalized)) {
+    return 'Span Info';
+  }
+
+  if (/^span attribute/i.test(normalized)) {
+    return 'Span Attr';
+  }
+
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
