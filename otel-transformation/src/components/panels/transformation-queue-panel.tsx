@@ -197,6 +197,7 @@ interface RowDetails {
   label: string;
   labelClassName: string;
   key?: string;
+  sectionLabel?: string;
   value: string;
   isRawOTTL?: boolean;
 }
@@ -220,13 +221,14 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
 
   const details = getRowDetails(transformation);
   const displayKey = (details.key ?? '').trim() === '' ? '--' : details.key;
+  const sectionLabel = details.sectionLabel ?? '';
   const displayValue = details.value.trim() === '' ? '--' : details.value;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex items-center gap-1 px-2 py-1.5 mb-0.5 leading-none transition-colors hover:bg-gray-200 focus-within:bg-gray-200 ${
+      className={`relative flex items-center gap-1 px-2 py-1.5 mb-0.5 leading-none transition-colors bg-gray-100 hover:bg-gray-200 focus-within:bg-gray-200 ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
       }`}
       onMouseEnter={() => setIsHovered(true)}
@@ -247,11 +249,6 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span
-        className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${details.labelClassName}`}
-      >
-        {details.label}
-      </span>
       {details.isRawOTTL ? (
         <div className="flex flex-1 items-center gap-2 text-xs text-gray-600">
           <SquareTerminal className="h-4 w-4 text-gray-500" />
@@ -261,31 +258,47 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         </div>
       ) : (
         <>
-          <span className="min-w-[160px] shrink-0 font-mono text-xs text-gray-700 break-words">
-            {displayKey}
-          </span>
+          <div className="flex w-72 shrink-0 items-center gap-2 pr-2">
+            <span
+              className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${details.labelClassName}`}
+            >
+              {details.label}
+            </span>
+            {sectionLabel && (
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {sectionLabel}
+              </span>
+            )}
+            <span className="font-mono text-xs text-gray-700 break-words">
+              {displayKey}
+            </span>
+          </div>
           <span className="flex-1 text-xs text-gray-600 break-words">{displayValue}</span>
         </>
       )}
-      {(isHovered || isFocused) && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onRemove(transformation.id)}
-                className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
-                aria-label="Delete transformation"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Delete transformation</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+      <div className="flex h-7 w-7 items-center justify-center">
+        {(isHovered || isFocused) ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => onRemove(transformation.id)}
+                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+                  aria-label="Delete transformation"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Delete transformation</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className="h-4 w-4" aria-hidden="true" />
+        )}
+      </div>
     </div>
   );
 }
@@ -298,6 +311,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
         key,
+        sectionLabel: formatSectionLabel(transformation.sectionId),
         value: value === '' ? '""' : value,
       };
     }
@@ -313,6 +327,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
         key: newKey,
+        sectionLabel: formatSectionLabel(transformation.sectionId),
         value: `from ${sourceKey} (${substringStart} -> ${endLabel})`,
       };
     }
@@ -322,6 +337,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'DELETE',
         labelClassName: 'bg-red-600 text-white',
         key: attributeKey,
+        sectionLabel: formatSectionLabel(transformation.sectionId),
         value: attributeValue ?? attributePath,
       };
     }
@@ -332,15 +348,17 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'MASK',
         labelClassName: 'bg-blue-600 text-white',
         key: attributeKey,
+        sectionLabel: formatSectionLabel(transformation.sectionId),
         value: `mask ${maskStart} -> ${endLabel} with "${maskChar}"`,
       };
     }
     case TransformationType.RENAME_KEY: {
       const { oldKey, newKey } = transformation.params;
       return {
-        label: 'RENAME KEY',
+        label: 'RENAME',
         labelClassName: 'bg-indigo-600 text-white',
         key: oldKey,
+        sectionLabel: formatSectionLabel(transformation.sectionId),
         value: `to ${newKey}`,
       };
     }
@@ -360,5 +378,13 @@ function getRowDetails(transformation: Transformation): RowDetails {
         value: '--',
       };
   }
+}
+
+function formatSectionLabel(sectionId: string): string {
+  if (!sectionId) return '';
+  const baseId = sectionId.replace(/-\d+$/, '');
+  return baseId
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
