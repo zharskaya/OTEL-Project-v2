@@ -2,8 +2,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
-import { useTransformationActions } from '@/lib/state/hooks';
-import { TransformationType, TransformationStatus } from '@/types/transformation-types';
+import { useTransformationActions, useTransformations } from '@/lib/state/hooks';
+import {
+  TransformationType,
+  TransformationStatus,
+  type RenameKeyParams,
+  type DeleteParams,
+  type AddStaticParams,
+} from '@/types/transformation-types';
 
 interface RenameKeyFormProps {
   oldKey: string;
@@ -22,7 +28,8 @@ export function RenameKeyForm({
 }: RenameKeyFormProps) {
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addTransformation } = useTransformationActions();
+  const { addTransformation, updateTransformation, removeTransformation } = useTransformationActions();
+  const transformations = useTransformations();
   const hasSavedRef = useRef(false);
 
   // Focus on mount and select all text
@@ -49,38 +56,60 @@ export function RenameKeyForm({
 
     hasSavedRef.current = true;
 
-    const timestamp = Date.now();
+    const existingDelete = transformations.find(
+      (transformation) =>
+        transformation.type === TransformationType.DELETE &&
+        (transformation.params as DeleteParams).attributePath === attributePath &&
+        (transformation.params as DeleteParams).attributeKey === oldKey
+    );
 
-    // 1. Add the new key with the existing value
-    addTransformation({
-      id: `t-${timestamp}-add-rename`,
-      type: TransformationType.ADD_STATIC,
-      order: 0,
-      sectionId,
-      createdAt: new Date(),
-      status: TransformationStatus.ACTIVE,
-      params: {
-        type: TransformationType.ADD_STATIC,
-        key: trimmed,
-        value: oldKey,
-        insertionPoint: sectionId,
-      },
-    });
+    if (existingDelete) {
+      removeTransformation(existingDelete.id);
+    }
 
-    // 2. Delete the old key
-    addTransformation({
-      id: `t-${timestamp}-delete-rename`,
-      type: TransformationType.DELETE,
-      order: 0,
-      sectionId,
-      createdAt: new Date(),
-      status: TransformationStatus.ACTIVE,
-      params: {
-        type: TransformationType.DELETE,
-        attributePath,
-        attributeKey: oldKey,
-      },
-    });
+    const existingAddStatic = transformations.find(
+      (transformation) =>
+        transformation.type === TransformationType.ADD_STATIC &&
+        (transformation.params as AddStaticParams).key === trimmed &&
+        (transformation.params as AddStaticParams).insertionPoint === sectionId &&
+        (transformation.params as AddStaticParams).value === oldKey
+    );
+
+    if (existingAddStatic) {
+      removeTransformation(existingAddStatic.id);
+    }
+
+    const existingRename = transformations.find(
+      (transformation) =>
+        transformation.type === TransformationType.RENAME_KEY &&
+        (transformation.params as RenameKeyParams).attributePath === attributePath
+    );
+
+    const renameParams: RenameKeyParams = {
+      type: TransformationType.RENAME_KEY,
+      attributePath,
+      oldKey,
+      newKey: trimmed,
+    };
+
+    if (existingRename) {
+      updateTransformation(existingRename.id, {
+        params: renameParams,
+        sectionId,
+        createdAt: new Date(),
+        status: TransformationStatus.ACTIVE,
+      });
+    } else {
+      addTransformation({
+        id: `t-${Date.now()}`,
+        type: TransformationType.RENAME_KEY,
+        order: 0,
+        sectionId,
+        createdAt: new Date(),
+        status: TransformationStatus.ACTIVE,
+        params: renameParams,
+      });
+    }
 
     onSave();
   };

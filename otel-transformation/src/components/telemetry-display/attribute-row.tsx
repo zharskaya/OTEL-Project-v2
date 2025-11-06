@@ -30,16 +30,8 @@ const formatRangeLabel = (
   end: number | 'end',
   fullLength?: number
 ): string => {
-  const resolvedEnd = end === 'end' ? fullLength ?? 'end' : end;
-  const isFullLength =
-    start === 0 &&
-    ((typeof resolvedEnd === 'number' && fullLength !== undefined && resolvedEnd >= fullLength) || end === 'end');
-
-  if (isFullLength) {
-    return '[Entire str]';
-  }
-
-  const endLabel = end === 'end' ? 'end' : String(end);
+  const isEnd = end === 'end' || (typeof end === 'number' && fullLength !== undefined && end >= fullLength);
+  const endLabel = isEnd ? 'end' : String(end);
   return `[${start}..${endLabel}]`;
 };
 
