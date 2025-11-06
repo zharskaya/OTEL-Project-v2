@@ -196,9 +196,8 @@ export function TransformationQueuePanel({
 interface RowDetails {
   label: string;
   labelClassName: string;
-  key?: string;
-  sectionLabel?: string;
-  value: string;
+  section?: string;
+  description: string;
   isRawOTTL?: boolean;
 }
 
@@ -220,9 +219,9 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   };
 
   const details = getRowDetails(transformation);
-  const displayKey = (details.key ?? '').trim() === '' ? '--' : details.key;
-  const sectionLabel = details.sectionLabel ?? '';
-  const displayValue = details.value.trim() === '' ? '--' : details.value;
+  const labelText = details.label;
+  const sectionText = details.section ?? '';
+  const descriptionText = details.description;
 
   return (
     <div
@@ -253,27 +252,22 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         <div className="flex flex-1 items-center gap-2 text-xs text-gray-600">
           <SquareTerminal className="h-4 w-4 text-gray-500" />
           <span className="font-mono break-words text-left text-gray-800">
-            {displayValue}
+            {descriptionText}
           </span>
         </div>
       ) : (
         <>
-          <div className="flex w-72 shrink-0 items-center gap-2 pr-2">
+          <div className="grid min-w-0 flex-1 grid-cols-[56px,104px,1fr] items-center gap-2 pr-2">
             <span
-              className={`inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${details.labelClassName}`}
+              className={`inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide ${details.labelClassName}`}
             >
-              {details.label}
+              {labelText}
             </span>
-            {sectionLabel && (
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                {sectionLabel}
-              </span>
-            )}
-            <span className="font-mono text-xs text-gray-700 break-words">
-              {displayKey}
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              {sectionText}
             </span>
+            <span className="text-xs text-gray-600 break-words">{descriptionText}</span>
           </div>
-          <span className="flex-1 text-xs text-gray-600 break-words">{displayValue}</span>
         </>
       )}
       <div className="flex h-7 w-7 items-center justify-center">
@@ -307,12 +301,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
   switch (transformation.params.type) {
     case TransformationType.ADD_STATIC: {
       const { key, value } = transformation.params;
+      const valueText = JSON.stringify(value ?? '');
       return {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
-        key,
-        sectionLabel: formatSectionLabel(transformation.sectionId),
-        value: value === '' ? '""' : value,
+        section: formatSectionLabel(transformation.sectionId),
+        description: `${key} = ${valueText}`,
       };
     }
     case TransformationType.ADD_SUBSTRING: {
@@ -322,34 +316,30 @@ function getRowDetails(transformation: Transformation): RowDetails {
         substringStart,
         substringEnd,
       } = transformation.params;
-      const endLabel = substringEnd === 'end' ? 'end' : substringEnd.toString();
       return {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
-        key: newKey,
-        sectionLabel: formatSectionLabel(transformation.sectionId),
-        value: `from ${sourceKey} (${substringStart} -> ${endLabel})`,
+        section: formatSectionLabel(transformation.sectionId),
+        description: `${newKey} from ${sourceKey} ${formatRange(substringStart, substringEnd)}`,
       };
     }
     case TransformationType.DELETE: {
-      const { attributeKey, attributePath, attributeValue } = transformation.params;
+      const { attributeKey, attributePath } = transformation.params;
+      const keyLabel = attributeKey || attributePath;
       return {
         label: 'DELETE',
         labelClassName: 'bg-red-600 text-white',
-        key: attributeKey,
-        sectionLabel: formatSectionLabel(transformation.sectionId),
-        value: attributeValue ?? attributePath,
+        section: formatSectionLabel(transformation.sectionId),
+        description: `${keyLabel ?? ''}`.trim(),
       };
     }
     case TransformationType.MASK: {
-      const { attributeKey, maskStart, maskEnd, maskChar } = transformation.params;
-      const endLabel = maskEnd === 'end' ? 'end' : maskEnd.toString();
+      const { attributeKey, maskStart, maskEnd } = transformation.params;
       return {
         label: 'MASK',
         labelClassName: 'bg-blue-600 text-white',
-        key: attributeKey,
-        sectionLabel: formatSectionLabel(transformation.sectionId),
-        value: `mask ${maskStart} -> ${endLabel} with "${maskChar}"`,
+        section: formatSectionLabel(transformation.sectionId),
+        description: `${attributeKey} ${formatRange(maskStart, maskEnd)}`,
       };
     }
     case TransformationType.RENAME_KEY: {
@@ -357,9 +347,8 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         label: 'RENAME',
         labelClassName: 'bg-indigo-600 text-white',
-        key: oldKey,
-        sectionLabel: formatSectionLabel(transformation.sectionId),
-        value: `to ${newKey}`,
+        section: formatSectionLabel(transformation.sectionId),
+        description: `${oldKey} to ${newKey}`,
       };
     }
     case TransformationType.RAW_OTTL: {
@@ -367,7 +356,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         label: 'OTTL',
         labelClassName: 'bg-purple-600 text-white',
-        value: statement,
+        description: statement,
         isRawOTTL: true,
       };
     }
@@ -375,7 +364,8 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         label: 'STEP',
         labelClassName: 'bg-gray-600 text-white',
-        value: '--',
+        section: formatSectionLabel(transformation.sectionId),
+        description: '--',
       };
   }
 }
@@ -383,20 +373,28 @@ function getRowDetails(transformation: Transformation): RowDetails {
 function formatSectionLabel(sectionId: string): string {
   if (!sectionId) return '';
   const baseId = sectionId.replace(/-\d+$/, '');
-  const normalized = baseId.replace(/-/g, ' ').trim();
+  const normalized = baseId.replace(/-/g, ' ').trim().toLowerCase();
 
-  if (/^resource/i.test(normalized)) {
-    return 'Resource Attr';
+  const mappings: [RegExp, string][] = [
+    [/^resource(?:\s+attributes?)?/, 'Resource Attr'],
+    [/^span\s+info/, 'Span Info'],
+    [/^span\s+attributes?/, 'Span Attr'],
+    [/^scope\s+attributes?/, 'Scope Attr'],
+    [/^scope\s+info/, 'Scope Info'],
+    [/^event\s+attributes?/, 'Event Attr'],
+  ];
+
+  for (const [pattern, label] of mappings) {
+    if (pattern.test(normalized)) {
+      return label.toUpperCase();
+    }
   }
 
-  if (/^span info/i.test(normalized)) {
-    return 'Span Info';
-  }
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase()).toUpperCase();
+}
 
-  if (/^span attribute/i.test(normalized)) {
-    return 'Span Attr';
-  }
-
-  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+function formatRange(start: number, end: number | 'end'): string {
+  const endLabel = end === 'end' ? 'end' : end.toString();
+  return `[${start}..${endLabel}]`;
 }
 
