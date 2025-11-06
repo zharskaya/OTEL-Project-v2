@@ -23,7 +23,7 @@ export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
 
   const handleSave = () => {
     const statement = input.trim();
-    
+
     // If empty, just cancel (hide form) without error
     if (!statement) {
       onCancel();

@@ -11,7 +11,6 @@ import { AttributeRow } from './attribute-row';
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
-import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
 
@@ -26,7 +25,6 @@ interface TreeSectionProps {
 export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletionId, movedKeys }: TreeSectionProps) {
   const [isExpanded, setIsExpanded] = useState(section.expanded);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showOTTLForm, setShowOTTLForm] = useState(false);
   const [showSubstringForm, setShowSubstringForm] = useState(false);
   const [substringParams, setSubstringParams] = useState<{
     sourceKey: string;
@@ -59,34 +57,13 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   // Get newly added attributes from transformations
   const addedAttributes = React.useMemo(() => {
     return sectionTransformations
-      .filter(t => t.type === 'add-static' || t.type === 'add-substring' || t.type === 'raw-ottl')
+      .filter(t => t.type === 'add-static' || t.type === 'add-substring')
       .map((t, idx) => {
         const params = t.params as any;
         // Create unique ID using stable transformation ID
         // The transformation ID already contains timestamp, so it's unique
         const key = params.newKey || params.key || 'OTTL';
         const uniqueId = `added-${section.id}-${key}-${t.id}-idx${idx}`;
-        
-        // For raw OTTL, display the statement as entered (no parsing)
-        if (t.type === 'raw-ottl') {
-          return {
-            id: uniqueId,
-            path: `${params.insertionPoint}.ottl-${t.id}`,
-            sectionId: section.id,
-            key: 'OTTL',
-            value: params.statement,
-            valueType: ValueType.STRING,
-            depth: 0,
-            isRawOTTL: true, // Mark as raw OTTL for special rendering
-            sourceAttributePath: undefined, // No source
-            modifications: [{
-              transformationId: t.id,
-              type: t.type,
-              label: 'ADD',
-              color: ModificationColor.GREEN,
-            }],
-          };
-        }
         
         // For substring attributes, compute the extracted value
         let displayValue = params.value || '';
@@ -132,10 +109,10 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   const baseAttributes = React.useMemo(() => {
     const result: DisplayAttribute[] = [];
     const substringAttrs = addedAttributes.filter(a => a.sourceAttributePath);
-    const otherAddedAttrs = addedAttributes.filter(a => !a.sourceAttributePath);
+    const staticAddedAttrs = addedAttributes.filter(a => !a.sourceAttributePath);
     
     // Add non-substring attributes at the top (newest first - most recent addition goes to position 0)
-    result.push(...[...otherAddedAttrs].reverse());
+    result.push(...[...staticAddedAttrs].reverse());
     
     // Then add original attributes with substring attributes inserted ABOVE their source
     for (const attr of section.attributes) {
@@ -204,7 +181,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
             updated.unshift(key);
           }
         } else {
-          // Static and raw OTTL attributes should appear at the top
+          // Static attributes should appear at the top
           updated.unshift(key);
         }
       }
@@ -280,13 +257,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
   const handleAddStatic = () => {
     setShowAddForm(true);
-    setShowOTTLForm(false);
-    setShowSubstringForm(false);
-  };
-
-  const handleAddRawOTTL = () => {
-    setShowOTTLForm(true);
-    setShowAddForm(false);
     setShowSubstringForm(false);
   };
 
@@ -303,12 +273,10 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     });
     setShowSubstringForm(true);
     setShowAddForm(false);
-    setShowOTTLForm(false);
   };
 
   const handleFormClose = () => {
     setShowAddForm(false);
-    setShowOTTLForm(false);
     setShowSubstringForm(false);
     setSubstringParams(null);
   };
@@ -322,7 +290,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         isExpanded={isExpanded}
         onToggleExpand={toggleExpand}
         onAddStatic={handleAddStatic}
-        onAddRawOTTL={handleAddRawOTTL}
       />
 
       {/* Section Content */}
@@ -332,15 +299,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           {/* Add form */}
           {showAddForm && (
             <AddAttributeForm
-              sectionId={section.id}
-              onCancel={handleFormClose}
-              onSave={handleFormClose}
-            />
-          )}
-
-          {/* Raw OTTL form */}
-          {showOTTLForm && (
-            <RawOTTLForm
               sectionId={section.id}
               onCancel={handleFormClose}
               onSave={handleFormClose}

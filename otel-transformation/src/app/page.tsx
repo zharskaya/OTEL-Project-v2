@@ -70,7 +70,7 @@ export default function Home() {
             leftPanel={
               <TransformationQueuePanel
                 onPreview={handleRun}
-                hasChanges={hasChanges}
+                sections={inputTree.sections}
               />
             }
             rightPanel={

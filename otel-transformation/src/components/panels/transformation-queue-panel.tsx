@@ -29,19 +29,24 @@ import {
   Transformation,
   TransformationType,
 } from '@/types/transformation-types';
-import { GripVertical, Trash2 } from 'lucide-react';
+import { GripVertical, Trash2, SquareTerminal } from 'lucide-react';
+import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
+import type { TelemetrySection } from '@/types/telemetry-types';
 
 interface TransformationQueuePanelProps {
   onPreview: () => void;
+  sections: TelemetrySection[];
 }
 
 export function TransformationQueuePanel({
   onPreview,
+  sections,
 }: TransformationQueuePanelProps) {
   const transformations = useTransformations();
   const { removeTransformation, reorderTransformations } = useTransformationActions();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
+  const [isRawOTTLFormOpen, setIsRawOTTLFormOpen] = useState(false);
 
   const orderedTransformations = useMemo(
     () =>
@@ -50,6 +55,8 @@ export function TransformationQueuePanel({
       ),
     [transformations]
   );
+
+  const defaultSectionId = sections[0]?.id ?? '';
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -102,43 +109,71 @@ export function TransformationQueuePanel({
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between bg-gray-100 px-3 py-3 min-h-[52px]">
         <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onPreview}
-                className="flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
-              >
-                Preview
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Preview transformed data (⌘/Ctrl + Enter)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <div className="flex items-center gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setIsRawOTTLFormOpen((value) => !value)}
+                  className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={!defaultSectionId}
+                  aria-label="Add raw OTTL statement"
+                >
+                  <SquareTerminal className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Add raw OTTL statement</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onPreview}
+                  className="flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
+                >
+                  Preview
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Preview transformed data (⌘/Ctrl + Enter)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden bg-gray-50">
-        {orderedTransformations.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-3 text-center text-sm text-gray-500">
-            No transformations yet. Add one from the telemetry tree to build a queue.
-          </div>
-        ) : (
-          <ScrollArea className="h-full">
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              onDragCancel={handleDragCancel}
+        <ScrollArea className="h-full">
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            onDragCancel={handleDragCancel}
+          >
+            <SortableContext
+              items={orderedTransformations.map((item) => item.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <SortableContext
-                items={orderedTransformations.map((item) => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-1 px-3 py-3">
-                  {orderedTransformations.map((transformation) => (
+              <div className="space-y-1 px-3 py-3">
+                {isRawOTTLFormOpen && (
+                  <div className="mb-2 rounded-md bg-gray-200">
+                    <RawOTTLForm
+                      sectionId={defaultSectionId}
+                      onCancel={() => setIsRawOTTLFormOpen(false)}
+                      onSave={() => setIsRawOTTLFormOpen(false)}
+                    />
+                  </div>
+                )}
+                {orderedTransformations.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-gray-300 bg-white px-3 py-6 text-center text-sm text-gray-500">
+                    No transformations yet. Add one from the telemetry tree to build a queue.
+                  </div>
+                ) : (
+                  orderedTransformations.map((transformation) => (
                     <QueueItem
                       key={transformation.id}
                       transformation={transformation}
@@ -147,12 +182,12 @@ export function TransformationQueuePanel({
                         dropIndicatorId === transformation.id && transformation.id !== activeId
                       }
                     />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          </ScrollArea>
-        )}
+                  ))
+                )}
+              </div>
+            </SortableContext>
+          </DndContext>
+        </ScrollArea>
       </div>
     </div>
   );
@@ -161,8 +196,9 @@ export function TransformationQueuePanel({
 interface RowDetails {
   label: string;
   labelClassName: string;
-  key: string;
+  key?: string;
   value: string;
+  isRawOTTL?: boolean;
 }
 
 interface QueueItemProps {
@@ -174,6 +210,8 @@ interface QueueItemProps {
 function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemProps) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
     useSortable({ id: transformation.id });
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -181,7 +219,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   };
 
   const details = getRowDetails(transformation);
-  const displayKey = details.key.trim() === '' ? '--' : details.key;
+  const displayKey = (details.key ?? '').trim() === '' ? '--' : details.key;
   const displayValue = details.value.trim() === '' ? '--' : details.value;
 
   return (
@@ -191,6 +229,10 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
       className={`relative flex items-center gap-1 px-2 py-1.5 mb-0.5 leading-none transition-colors hover:bg-gray-200 focus-within:bg-gray-200 ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
       }`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocusCapture={() => setIsFocused(true)}
+      onBlurCapture={() => setIsFocused(false)}
     >
       {showDropIndicator && (
         <span className="absolute left-2 right-2 top-0 h-0.5 bg-blue-500" aria-hidden="true" />
@@ -210,18 +252,40 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
       >
         {details.label}
       </span>
-      <span className="min-w-[160px] shrink-0 font-mono text-xs text-gray-700 break-words">
-        {displayKey}
-      </span>
-      <span className="flex-1 text-xs text-gray-600 break-words">{displayValue}</span>
-      <button
-        type="button"
-        onClick={() => onRemove(transformation.id)}
-        className="flex h-7 w-7 items-center justify-center rounded-md text-gray-500 transition-colors hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30"
-        aria-label="Delete transformation"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      {details.isRawOTTL ? (
+        <div className="flex flex-1 items-center gap-2 text-xs text-gray-600">
+          <SquareTerminal className="h-4 w-4 text-gray-500" />
+          <span className="font-mono break-words text-left text-gray-800">
+            {displayValue}
+          </span>
+        </div>
+      ) : (
+        <>
+          <span className="min-w-[160px] shrink-0 font-mono text-xs text-gray-700 break-words">
+            {displayKey}
+          </span>
+          <span className="flex-1 text-xs text-gray-600 break-words">{displayValue}</span>
+        </>
+      )}
+      {(isHovered || isFocused) && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onRemove(transformation.id)}
+                className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 cursor-pointer"
+                aria-label="Delete transformation"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Delete transformation</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
     </div>
   );
 }
@@ -281,19 +345,18 @@ function getRowDetails(transformation: Transformation): RowDetails {
       };
     }
     case TransformationType.RAW_OTTL: {
-      const { insertionPoint, statement } = transformation.params;
+      const { statement } = transformation.params;
       return {
         label: 'OTTL',
         labelClassName: 'bg-purple-600 text-white',
-        key: insertionPoint,
         value: statement,
+        isRawOTTL: true,
       };
     }
     default:
       return {
         label: 'STEP',
         labelClassName: 'bg-gray-600 text-white',
-        key: '--',
         value: '--',
       };
   }
