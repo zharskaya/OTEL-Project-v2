@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -197,7 +197,7 @@ interface RowDetails {
   label: string;
   labelClassName: string;
   section?: string;
-  description: string;
+  description: ReactNode;
   isRawOTTL?: boolean;
 }
 
@@ -221,7 +221,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const details = getRowDetails(transformation);
   const labelText = details.label;
   const sectionText = details.section ?? '';
-  const descriptionText = details.description;
+  const descriptionContent = details.description;
 
   return (
     <div
@@ -252,7 +252,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         <div className="flex flex-1 items-center gap-2 text-xs text-gray-600">
           <SquareTerminal className="h-4 w-4 text-gray-500" />
           <span className="font-mono break-words text-left text-gray-800">
-            {descriptionText}
+            {descriptionContent}
           </span>
         </div>
       ) : (
@@ -266,7 +266,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
             <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               {sectionText}
             </span>
-            <span className="text-xs text-gray-600 break-words">{descriptionText}</span>
+            <span className="text-xs text-gray-600 break-words">{descriptionContent}</span>
           </div>
         </>
       )}
@@ -306,7 +306,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
-        description: `${key} = ${valueText}`,
+        description: (
+          <>
+            <span className="font-semibold text-gray-900">{key}</span>
+            <span>{` = ${valueText}`}</span>
+          </>
+        ),
       };
     }
     case TransformationType.ADD_SUBSTRING: {
@@ -320,7 +325,14 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
-        description: `${newKey} from ${sourceKey} ${formatRange(substringStart, substringEnd)}`,
+        description: (
+          <>
+            <span className="font-semibold text-gray-900">{newKey}</span>
+            <span> from </span>
+            <span className="font-semibold text-gray-900">{sourceKey}</span>
+            <span>{` ${formatRange(substringStart, substringEnd)}`}</span>
+          </>
+        ),
       };
     }
     case TransformationType.DELETE: {
@@ -330,7 +342,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'DELETE',
         labelClassName: 'bg-red-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
-        description: `${keyLabel ?? ''}`.trim(),
+        description: (
+          <span className="font-semibold text-gray-900">{(keyLabel ?? '').trim() || '--'}</span>
+        ),
       };
     }
     case TransformationType.MASK: {
@@ -339,7 +353,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'MASK',
         labelClassName: 'bg-blue-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
-        description: `${attributeKey} ${formatRange(maskStart, maskEnd)}`,
+        description: (
+          <>
+            <span className="font-semibold text-gray-900">{attributeKey}</span>
+            <span>{` ${formatRange(maskStart, maskEnd)}`}</span>
+          </>
+        ),
       };
     }
     case TransformationType.RENAME_KEY: {
@@ -348,7 +367,13 @@ function getRowDetails(transformation: Transformation): RowDetails {
         label: 'RENAME',
         labelClassName: 'bg-indigo-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
-        description: `${oldKey} to ${newKey}`,
+        description: (
+          <>
+            <span className="font-semibold text-gray-900">{oldKey}</span>
+            <span> to </span>
+            <span className="font-semibold text-gray-900">{newKey}</span>
+          </>
+        ),
       };
     }
     case TransformationType.RAW_OTTL: {
