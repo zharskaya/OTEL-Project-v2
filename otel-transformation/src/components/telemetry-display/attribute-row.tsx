@@ -14,6 +14,7 @@ import {
 import {
   useTransformationActions,
   useTransformationHighlightActions,
+  useHighlightedTransformationIds,
   useTransformations,
 } from '@/lib/state/hooks';
 import { TransformationType, TransformationStatus } from '@/types/transformation-types';
@@ -61,6 +62,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   } = useTransformationActions();
   const { setHoveredTransformationIds, clearHoveredTransformationIds } =
     useTransformationHighlightActions();
+  const highlightedTransformationIds = useHighlightedTransformationIds();
   const transformations = useTransformations();
 
   // Use sortable hook for draggable rows
@@ -382,7 +384,18 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const handleRowPointerLeave = () => {
     setIsHovered(false);
     setIsValueHovered(false);
-    clearHoveredTransformationIds();
+    if (relatedTransformationIds.length > 0) {
+      const relatedSet = new Set(relatedTransformationIds);
+      const shouldClear =
+        highlightedTransformationIds.length > 0 &&
+        highlightedTransformationIds.every((id) => relatedSet.has(id));
+
+      if (shouldClear) {
+        clearHoveredTransformationIds();
+      }
+    } else if (highlightedTransformationIds.length === 0) {
+      clearHoveredTransformationIds();
+    }
     if (!selection) {
       scheduleHoverHide();
     }
@@ -390,9 +403,21 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   React.useEffect(() => {
     return () => {
-      clearHoveredTransformationIds();
+      if (relatedTransformationIds.length > 0) {
+        const relatedSet = new Set(relatedTransformationIds);
+        const shouldClear =
+          highlightedTransformationIds.length > 0 &&
+          highlightedTransformationIds.every((id) => relatedSet.has(id));
+        if (shouldClear) {
+          clearHoveredTransformationIds();
+        }
+      }
     };
-  }, [clearHoveredTransformationIds]);
+  }, [
+    clearHoveredTransformationIds,
+    highlightedTransformationIds,
+    relatedTransformationIds,
+  ]);
 
   const selectEntireValue = () => {
     const fullText = getFullValueText();
@@ -549,7 +574,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const hasActiveSelection = !!activeSelection;
   const shouldShowMaskSelector = hasActiveSelection && isValueInteractive;
   const maskAndRename = isMasked && isRenamed && maskTransformation && renameTransformation;
-  const isRowHoverActive = isHovered || shouldShowMaskSelector;
+  const isHighlightedByQueue = useMemo(
+    () =>
+      relatedTransformationIds.length > 0 &&
+      highlightedTransformationIds.some((id) => relatedTransformationIds.includes(id)),
+    [highlightedTransformationIds, relatedTransformationIds]
+  );
+
+  const isRowHoverActive = isHovered || shouldShowMaskSelector || isHighlightedByQueue;
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered;
 
@@ -572,7 +604,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       <div
         ref={setNodeRef}
         style={style}
-        className={`relative flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none ${getRowBackgroundClass()} ${isRowHoverActive ? 'bg-gray-200' : ''}`}
+        className={`relative flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none ${getRowBackgroundClass()} ${isRowHoverActive ? 'bg-gray-300' : ''}`}
         onMouseEnter={handleRowPointerEnter}
         onMouseLeave={handleRowPointerLeave}
         onPointerLeave={handleRowPointerLeave}

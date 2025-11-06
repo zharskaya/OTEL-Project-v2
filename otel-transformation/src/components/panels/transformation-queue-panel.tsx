@@ -24,7 +24,12 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useTransformations, useTransformationActions, useHighlightedTransformationIds } from '@/lib/state/hooks';
+import {
+  useTransformations,
+  useTransformationActions,
+  useHighlightedTransformationIds,
+  useTransformationHighlightActions,
+} from '@/lib/state/hooks';
 import {
   Transformation,
   TransformationType,
@@ -196,6 +201,8 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const highlightedTransformationIds = useHighlightedTransformationIds();
+  const { setHoveredTransformationIds, clearHoveredTransformationIds } =
+    useTransformationHighlightActions();
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -207,7 +214,6 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const sectionText = details.section ?? '';
   const descriptionContent = details.description;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
-  const highlightClass = isHighlighted ? 'bg-gray-300' : '';
 
   const showActions = isHovered || isFocused;
 
@@ -219,11 +225,23 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         isHighlighted ? 'bg-gray-300' : 'bg-gray-100'
       } ${
         isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
-      } ${highlightClass}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onFocusCapture={() => setIsFocused(true)}
-      onBlurCapture={() => setIsFocused(false)}
+      }`}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        setHoveredTransformationIds([transformation.id]);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        clearHoveredTransformationIds();
+      }}
+      onFocusCapture={() => {
+        setIsFocused(true);
+        setHoveredTransformationIds([transformation.id]);
+      }}
+      onBlurCapture={() => {
+        setIsFocused(false);
+        clearHoveredTransformationIds();
+      }}
     >
       {showDropIndicator && (
         <span className="absolute left-2 right-2 top-0 h-0.5 bg-blue-500" aria-hidden="true" />
