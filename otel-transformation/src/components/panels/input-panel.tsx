@@ -1,55 +1,21 @@
 'use client';
 
-import React from 'react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import type { ReactNode } from 'react';
 
 interface InputPanelProps {
-  children: React.ReactNode;
-  onRun: () => void;
-  hasChanges?: boolean;
+  children: ReactNode;
 }
 
-export function InputPanel({
-  children,
-  onRun,
-  hasChanges = false,
-}: InputPanelProps) {
+export function InputPanel({ children }: InputPanelProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between bg-gray-100 px-4 py-3 min-h-[52px]">
-        <h2 className="font-semibold text-gray-900">INPUT</h2>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={onRun}
-                className="flex items-center gap-1.5 rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
-              >
-                Preview
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Preview transformed data (⌘/Ctrl + Enter)</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+      <div className="flex items-center justify-between bg-gray-100 px-3 py-3 min-h-[52px]">
+        <h2 className="font-semibold text-xs text-gray-900">INPUT</h2>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto bg-white p-4">{children}</div>
-
-      {/* Status indicator for changes - disabled for now */}
-      {/* {hasChanges && (
-        <div className="border-t border-yellow-200 bg-yellow-50 px-4 py-2 text-xs text-yellow-800">
-          Changes made. Click Run to see results.
-        </div>
-      )} */}
+      <div className="flex-1 overflow-auto bg-white p-3">{children}</div>
     </div>
   );
 }

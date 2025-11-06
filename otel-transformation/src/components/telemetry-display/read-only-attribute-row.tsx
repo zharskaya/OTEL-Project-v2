@@ -36,7 +36,7 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Key - fixed width container with indented content */}
-      <div className="w-[360px] flex-shrink-0 flex items-center pr-4 leading-none">
+      <div className="w-[260px] flex-shrink-0 flex items-center pr-4 leading-none">
         <div style={{ paddingLeft: `${40 + attribute.depth * 16}px` }} className="flex items-center gap-3 leading-none">
           <div className="flex-1 min-w-0 leading-none">
             <span className="font-mono text-xs text-gray-900 leading-none select-none">

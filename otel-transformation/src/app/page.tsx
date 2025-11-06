@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { SplitPanel } from '@/components/panels/split-panel';
 import { InputPanel } from '@/components/panels/input-panel';
 import { OutputPanel } from '@/components/panels/output-panel';
+import { TransformationQueuePanel } from '@/components/panels/transformation-queue-panel';
 import { TelemetryTree } from '@/components/telemetry-display/telemetry-tree';
 import { ReadOnlyTelemetryTree } from '@/components/telemetry-display/read-only-telemetry-tree';
 import { KeyboardHintsBar } from '@/components/keyboard-hints/keyboard-hints-bar';
@@ -57,25 +58,36 @@ export default function Home() {
   return (
     <main className="h-screen w-screen overflow-hidden pb-14">
       <SplitPanel
-        initialLeftWidth={60}
+        initialLeftWidth={30}
         leftPanel={
-          <InputPanel onRun={handleRun} hasChanges={hasChanges}>
+          <InputPanel>
             <TelemetryTree tree={inputTree} />
           </InputPanel>
         }
         rightPanel={
-          <OutputPanel
-            isEmpty={lastResult === null}
-            hasChanges={hasChanges}
-            executionTime={lastResult?.executionTime}
-          >
-            {lastResult && (
-              <ReadOnlyTelemetryTree tree={lastResult.transformedTree} />
-            )}
-          </OutputPanel>
+          <SplitPanel
+            initialLeftWidth={57}
+            leftPanel={
+              <TransformationQueuePanel
+                onPreview={handleRun}
+                hasChanges={hasChanges}
+              />
+            }
+            rightPanel={
+              <OutputPanel
+                isEmpty={lastResult === null}
+                hasChanges={hasChanges}
+                executionTime={lastResult?.executionTime}
+              >
+                {lastResult && (
+                  <ReadOnlyTelemetryTree tree={lastResult.transformedTree} />
+                )}
+              </OutputPanel>
+            }
+          />
         }
       />
       <KeyboardHintsBar />
-      </main>
+    </main>
   );
 }

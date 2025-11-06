@@ -23,9 +23,9 @@ export function OutputPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between bg-gray-100 px-4 py-3 min-h-[52px]">
+      <div className="flex items-center justify-between bg-gray-100 px-3 py-3 min-h-[52px]">
         <div className="flex items-center gap-3">
-          <h2 className="font-semibold text-gray-900">OUTPUT</h2>
+          <h2 className="font-semibold text-xs text-gray-900">OUTPUT</h2>
         </div>
         <div className="flex gap-2 min-w-0">
           {!isEmpty && (
@@ -41,9 +41,9 @@ export function OutputPanel({
       </div>
 
       {/* Content */}
-      <div className="relative flex-1 overflow-auto bg-gray-50">
+      <div className="relative flex-1 overflow-auto bg-white">
         {isEmpty ? (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex h-full items-center justify-center px-3">
             <p className="text-gray-500">
                Click Preview or press (⌘ / Ctrl + Enter) to view the output
             </p>
@@ -52,12 +52,12 @@ export function OutputPanel({
               <>
                 {/* Info message when changes are made */}
                 {hasChanges && (
-                  <div className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50 px-4 py-3 text-center text-sm text-blue-800 font-medium">
+                  <div className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50 px-3 py-3 text-center text-sm text-blue-800 font-medium">
                     Change made. Click Preview or press (⌘ / Ctrl + Enter) to view updates.
                   </div>
                 )}
                 {/* Output content with reduced opacity when changes exist */}
-                <div className={`p-4 ${hasChanges ? 'opacity-50' : ''}`}>
+                <div className={`p-3 ${hasChanges ? 'opacity-50' : ''}`}>
                   {children}
                 </div>
               </>

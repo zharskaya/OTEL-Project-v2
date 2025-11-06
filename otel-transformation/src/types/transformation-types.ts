@@ -59,6 +59,7 @@ export interface DeleteParams {
   type: TransformationType.DELETE;
   attributePath: string;
   attributeKey: string;
+  attributeValue?: string;
 }
 
 export interface MaskParams {

@@ -169,6 +169,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   React.useEffect(() => () => cancelHoverHide(), []);
 
   const handleDelete = () => {
+    const attributeValue = attribute.value ?? '';
+
     addTransformation({
       id: `t-${Date.now()}`,
       type: TransformationType.DELETE,
@@ -180,6 +182,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         type: TransformationType.DELETE,
         attributePath: attribute.path,
         attributeKey: attribute.key,
+        attributeValue,
       },
     });
   };
@@ -637,7 +640,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         ) : (
           <>
         {/* Key - fixed width container with indented content */}
-        <div className="w-[360px] flex-shrink-0 flex items-center pr-4 leading-none">
+        <div className="w-[260px] flex-shrink-0 flex items-center pr-4 leading-none">
           <div style={{ paddingLeft: `${40 + attribute.depth * 16}px` }} className="flex items-center gap-3 leading-none">
             {/* Key text */}
             <div
