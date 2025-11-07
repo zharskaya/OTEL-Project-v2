@@ -12,6 +12,7 @@ interface MaskValueSelectorProps {
   onClose: () => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
+  showMaskButton?: boolean;
 }
 
 export const MaskValueSelector = React.memo(function MaskValueSelector({
@@ -22,6 +23,7 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
   onClose,
   onPointerEnter,
   onPointerLeave,
+  showMaskButton = true,
 }: MaskValueSelectorProps) {
   const rangeLabel = React.useMemo(() => {
     const isEnd = selection.end >= selection.fullText.length;
@@ -65,16 +67,18 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
           <p className="text-xs font-semibold text-white leading-tight">Substring {rangeLabel}</p>
         </div>
         <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => {
-              onMask();
-              onClose();
-            }}
-            className="flex items-center gap-1 rounded-md bg-gray-800 px-2 py-1 text-xs text-white transition-colors hover:bg-gray-700 cursor-pointer leading-tight"
-          >
-            <EyeClosed className="h-3 w-3" />
-            <span>Mask</span>
-          </button>
+          {showMaskButton && (
+            <button
+              onClick={() => {
+                onMask();
+                onClose();
+              }}
+              className="flex items-center gap-1 rounded-md bg-gray-800 px-2 py-1 text-xs text-white transition-colors hover:bg-gray-700 cursor-pointer leading-tight"
+            >
+              <EyeClosed className="h-3 w-3" />
+              <span>Mask</span>
+            </button>
+          )}
           <button
             onClick={() => {
               onNewAttribute();

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
-import { useTransformationActions, useTransformations } from '@/lib/state/hooks';
+import { useAttributeOrder, useTransformationActions, useTransformations } from '@/lib/state/hooks';
 import {
   TransformationType,
   TransformationStatus,
@@ -17,6 +17,8 @@ interface RenameKeyFormProps {
   sectionId: string;
   onCancel: () => void;
   onSave: () => void;
+  isAddStatic?: boolean;
+  addStaticTransformationId?: string;
 }
 
 export function RenameKeyForm({
@@ -25,11 +27,19 @@ export function RenameKeyForm({
   sectionId,
   onCancel,
   onSave,
+  isAddStatic = false,
+  addStaticTransformationId,
 }: RenameKeyFormProps) {
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addTransformation, updateTransformation, removeTransformation } = useTransformationActions();
+  const {
+    addTransformation,
+    updateTransformation,
+    removeTransformation,
+    setAttributeOrder,
+  } = useTransformationActions();
   const transformations = useTransformations();
+  const attributeOrder = useAttributeOrder();
   const hasSavedRef = useRef(false);
 
   // Focus on mount and select all text
@@ -56,6 +66,41 @@ export function RenameKeyForm({
 
     hasSavedRef.current = true;
 
+    const existingRename = transformations.find(
+      (transformation) =>
+        transformation.type === TransformationType.RENAME_KEY &&
+        (transformation.params as RenameKeyParams).attributePath === attributePath
+    );
+
+    if (isAddStatic && addStaticTransformationId) {
+      const addTransformation = transformations.find(
+        (transformation) => transformation.id === addStaticTransformationId
+      );
+
+      if (addTransformation) {
+        const params = addTransformation.params as AddStaticParams;
+        updateTransformation(addTransformation.id, {
+          params: {
+            ...params,
+            key: trimmed,
+          },
+        });
+      }
+
+      if (existingRename) {
+        removeTransformation(existingRename.id);
+      }
+
+      const currentOrder = attributeOrder.get(sectionId);
+      if (currentOrder && currentOrder.length > 0) {
+        const updatedOrder = currentOrder.map((key) => (key === oldKey ? trimmed : key));
+        setAttributeOrder(sectionId, updatedOrder);
+      }
+
+      onSave();
+      return;
+    }
+
     const existingDelete = transformations.find(
       (transformation) =>
         transformation.type === TransformationType.DELETE &&
@@ -78,12 +123,6 @@ export function RenameKeyForm({
     if (existingAddStatic) {
       removeTransformation(existingAddStatic.id);
     }
-
-    const existingRename = transformations.find(
-      (transformation) =>
-        transformation.type === TransformationType.RENAME_KEY &&
-        (transformation.params as RenameKeyParams).attributePath === attributePath
-    );
 
     const renameParams: RenameKeyParams = {
       type: TransformationType.RENAME_KEY,

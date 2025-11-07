@@ -589,8 +589,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
 
     if (attribute.modifications.length === 0) return null;
-    
-    const modification = attribute.modifications[0];
+
     const labelMap: Record<string, { text: string; color: string }> = {
       'add': { text: 'ADD', color: 'bg-green-600 text-white' },
       'add-static': { text: 'ADD', color: 'bg-green-600 text-white' },
@@ -601,7 +600,42 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       'rename-key': { text: 'RENAME KEY', color: 'bg-indigo-600 text-white' },
     };
 
-    const label = labelMap[modification.type];
+    const hasAddModification = attribute.modifications.some((modification) =>
+      modification.type === 'add' ||
+      modification.type === 'add-static' ||
+      modification.type === 'add-substring'
+    );
+
+    const prioritizedTypes = hasAddModification
+      ? [
+          'mask',
+          'delete',
+          'add-substring',
+          'add-static',
+          'add',
+          'rename-key',
+          'raw-ottl',
+        ]
+      : [
+          'rename-key',
+          'mask',
+          'delete',
+          'add-substring',
+          'add-static',
+          'add',
+          'raw-ottl',
+        ];
+
+    const prioritizedModification =
+      prioritizedTypes
+        .map((type) => attribute.modifications.find((modification) => modification.type === type))
+        .find((modification) => Boolean(modification)) ?? attribute.modifications[0];
+
+    if (!prioritizedModification) {
+      return null;
+    }
+
+    const label = labelMap[prioritizedModification.type];
     if (!label) return null;
 
     return (
@@ -843,6 +877,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               oldKey={attribute.key}
               attributePath={attribute.path}
               sectionId={attribute.sectionId}
+              isAddStatic={isAddStatic}
+              addStaticTransformationId={isAddStatic && addTransformationRecord ? addTransformationRecord.id : undefined}
               onCancel={() => setIsRenaming(false)}
               onSave={() => setIsRenaming(false)}
             />
@@ -1159,6 +1195,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               scheduleHoverHide();
             }
           }}
+          showMaskButton={!isMasked}
         />
       )}
     </>
