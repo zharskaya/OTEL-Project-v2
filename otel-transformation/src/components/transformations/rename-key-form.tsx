@@ -9,6 +9,7 @@ import {
   type RenameKeyParams,
   type DeleteParams,
   type AddStaticParams,
+  type AddSubstringParams,
 } from '@/types/transformation-types';
 
 interface RenameKeyFormProps {
@@ -19,6 +20,9 @@ interface RenameKeyFormProps {
   onSave: () => void;
   isAddStatic?: boolean;
   addStaticTransformationId?: string;
+  isMovedIn?: boolean;
+  isAddSubstring?: boolean;
+  addSubstringTransformationId?: string;
 }
 
 export function RenameKeyForm({
@@ -29,6 +33,9 @@ export function RenameKeyForm({
   onSave,
   isAddStatic = false,
   addStaticTransformationId,
+  isMovedIn = false,
+  isAddSubstring = false,
+  addSubstringTransformationId,
 }: RenameKeyFormProps) {
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +79,7 @@ export function RenameKeyForm({
         (transformation.params as RenameKeyParams).attributePath === attributePath
     );
 
-    if (isAddStatic && addStaticTransformationId) {
+    if (isAddStatic && !isMovedIn && addStaticTransformationId) {
       const addTransformation = transformations.find(
         (transformation) => transformation.id === addStaticTransformationId
       );
@@ -83,6 +90,36 @@ export function RenameKeyForm({
           params: {
             ...params,
             key: trimmed,
+          },
+        });
+      }
+
+      if (existingRename) {
+        removeTransformation(existingRename.id);
+      }
+
+      const currentOrder = attributeOrder.get(sectionId);
+      if (currentOrder && currentOrder.length > 0) {
+        const updatedOrder = currentOrder.map((key) => (key === oldKey ? trimmed : key));
+        setAttributeOrder(sectionId, updatedOrder);
+      }
+
+      onSave();
+      return;
+    }
+
+    if (isAddSubstring && addSubstringTransformationId) {
+      const addSubstringTransformation = transformations.find(
+        (transformation) => transformation.id === addSubstringTransformationId
+      );
+
+      if (addSubstringTransformation) {
+        const params = addSubstringTransformation.params as AddSubstringParams;
+
+        updateTransformation(addSubstringTransformation.id, {
+          params: {
+            ...params,
+            newKey: trimmed,
           },
         });
       }

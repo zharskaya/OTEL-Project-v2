@@ -22,6 +22,7 @@ import {
   TransformationStatus,
   type AddStaticParams,
   type DeleteParams,
+  type RenameKeyParams,
 } from '@/types/transformation-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
@@ -174,6 +175,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const addStaticParams = isAddStatic && addTransformationRecord
     ? (addTransformationRecord.params as AddStaticParams)
     : undefined;
+  const renameParams = renameTransformation
+    ? (renameTransformation.params as RenameKeyParams)
+    : undefined;
 
   const movedToSectionLabel = isDeleted && deleteParams
     ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
@@ -182,6 +186,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const movedFromSectionLabel = isAddStatic && addStaticParams
     ? formatSectionDisplayName(addStaticParams.movedFromSectionLabel, addStaticParams.movedFromSectionId)
     : null;
+
+  const isMovedIn = Boolean(addStaticParams?.movedFromSectionId);
 
   const cancelHoverHide = () => {
     if (hoverHideTimeoutRef.current) {
@@ -274,17 +280,20 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   const handleUndo = () => {
     stopEditingAddStaticValue();
-    if (deleteTransformation) {
-      removeTransformation(deleteTransformation.id);
+    if (renameTransformation) {
+      removeTransformation(renameTransformation.id);
+      return;
     }
     if (maskTransformation) {
       removeTransformation(maskTransformation.id);
-    }
-    if (renameTransformation) {
-      removeTransformation(renameTransformation.id);
+      return;
     }
     if (addTransformationRecord) {
       removeTransformation(addTransformationRecord.id);
+      return;
+    }
+    if (deleteTransformation) {
+      removeTransformation(deleteTransformation.id);
     }
   };
 
@@ -336,7 +345,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const handleStartEditAddStaticValue = () => {
-    if (!isAddStatic || !addTransformationRecord) {
+    if (!isAddStatic || !addTransformationRecord || isMovedIn) {
       return;
     }
     const params = addTransformationRecord.params as AddStaticParams;
@@ -591,8 +600,49 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     if (isDeleted) {
       const text = movedKeys.has(attribute.key) ? 'MOVED OUT' : 'DELETE';
       return (
-        <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white`}>
-          {text}
+        <div className="flex flex-col items-end gap-1 text-right">
+          <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white`}>
+            {text}
+          </span>
+        </div>
+      );
+    }
+
+    const badges: React.ReactNode[] = [];
+
+    const addLabel = isMovedIn ? 'MOVED IN' : 'ADD';
+    const labelMap: Record<string, { text: string; color: string }> = {
+      'add': { text: addLabel, color: 'bg-green-600 text-white' },
+      'add-static': { text: addLabel, color: 'bg-green-600 text-white' },
+      'add-substring': { text: addLabel, color: 'bg-green-600 text-white' },
+      'raw-ottl': { text: 'OTTL', color: 'bg-purple-600 text-white' },
+      'delete': { text: 'DELETE', color: 'bg-red-600 text-white' },
+    };
+
+    const modificationDisplayOrder = [
+      'add',
+      'add-static',
+      'add-substring',
+      'raw-ottl',
+      'delete',
+    ];
+
+    for (const type of modificationDisplayOrder) {
+      const modification = attribute.modifications.find((m) => m.type === type);
+      if (!modification) continue;
+      const label = labelMap[type];
+      if (!label) continue;
+      badges.push(
+        <span key={`badge-${type}`} className={`${BADGE_BASE_CLASS} ${label.color}`}>
+          {label.text}
+        </span>
+      );
+    }
+
+    if (isRenamed) {
+      badges.push(
+        <span key="badge-rename" className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
+          RENAME KEY
         </span>
       );
     }
@@ -605,76 +655,21 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         params.maskEnd,
         rawValue.length
       );
-      return (
-        <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
+      badges.push(
+        <span key="badge-mask" className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
           MASK {rangeLabel}
         </span>
       );
     }
 
-    if (isRenamed) {
-      return (
-        <span className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
-          RENAME KEY
-        </span>
-      );
-    }
-
-    if (attribute.modifications.length === 0) return null;
-
-    const addLabel = addStaticParams?.movedFromSectionId ? 'MOVED IN' : 'ADD';
-    const labelMap: Record<string, { text: string; color: string }> = {
-      'add': { text: addLabel, color: 'bg-green-600 text-white' },
-      'add-static': { text: addLabel, color: 'bg-green-600 text-white' },
-      'add-substring': { text: addLabel, color: 'bg-green-600 text-white' },
-      'raw-ottl': { text: 'OTTL', color: 'bg-purple-600 text-white' },
-      'delete': { text: 'DELETE', color: 'bg-red-600 text-white' },
-      'mask': { text: 'MASK', color: 'bg-blue-600 text-white' },
-      'rename-key': { text: 'RENAME KEY', color: 'bg-indigo-600 text-white' },
-    };
-
-    const hasAddModification = attribute.modifications.some((modification) =>
-      modification.type === 'add' ||
-      modification.type === 'add-static' ||
-      modification.type === 'add-substring'
-    );
-
-    const prioritizedTypes = hasAddModification
-      ? [
-          'mask',
-          'delete',
-          'add-substring',
-          'add-static',
-          'add',
-          'rename-key',
-          'raw-ottl',
-        ]
-      : [
-          'rename-key',
-          'mask',
-          'delete',
-          'add-substring',
-          'add-static',
-          'add',
-          'raw-ottl',
-        ];
-
-    const prioritizedModification =
-      prioritizedTypes
-        .map((type) => attribute.modifications.find((modification) => modification.type === type))
-        .find((modification) => Boolean(modification)) ?? attribute.modifications[0];
-
-    if (!prioritizedModification) {
+    if (badges.length === 0) {
       return null;
     }
 
-    const label = labelMap[prioritizedModification.type];
-    if (!label) return null;
-
     return (
-      <span className={`${BADGE_BASE_CLASS} ${label.color}`}>
-        {label.text}
-      </span>
+      <div className="flex flex-col items-end gap-1 text-right">
+        {badges}
+      </div>
     );
   };
 
@@ -732,7 +727,6 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const isValueInteractive = !isDeleted;
   const hasActiveSelection = !!activeSelection;
   const shouldShowMaskSelector = hasActiveSelection && isValueInteractive;
-  const maskAndRename = isMasked && isRenamed && maskTransformation && renameTransformation;
   const isHighlightedByQueue = useMemo(
     () =>
       relatedTransformationIds.length > 0 &&
@@ -745,10 +739,10 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const shouldShowSelectAction =
     !isDeleted &&
     (!hasAnyModification || isRenamed || isMasked || isAddSubstring);
-  const shouldShowEditAddedAction = !isDeleted && isAddStatic && !attribute.isRawOTTL;
+  const shouldShowEditAddedAction = !isDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
-  const valueTooltipMessage = isAddStatic ? 'Click to edit static value' : 'Select to transform';
+  const valueTooltipMessage = isAddStatic && !isMovedIn ? 'Click to edit static value' : 'Select to transform';
 
   const openSelectionTooltip = () => {
     if (!isValueInteractive || isEditingAddStaticValue) {
@@ -912,18 +906,33 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               sectionId={attribute.sectionId}
               isAddStatic={isAddStatic}
               addStaticTransformationId={isAddStatic && addTransformationRecord ? addTransformationRecord.id : undefined}
+              isMovedIn={isMovedIn}
+              isAddSubstring={isAddSubstring}
+              addSubstringTransformationId={isAddSubstring && addTransformationRecord ? addTransformationRecord.id : undefined}
               onCancel={() => setIsRenaming(false)}
               onSave={() => setIsRenaming(false)}
             />
-          ) : isRenamed && renameTransformation ? (
-            <div className="flex flex-col gap-1 leading-none">
-              <span className="font-mono text-xs text-gray-900 leading-none">
-                {(renameTransformation.params as any).newKey}
-              </span>
-              <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
-                {attribute.key}
-              </span>
-            </div>
+          ) : isRenamed && renameTransformation && renameParams ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex flex-col gap-1 leading-none">
+                    <span
+                      className="font-mono text-xs text-gray-900 leading-none cursor-pointer"
+                      onClick={() => handleStartRenaming()}
+                    >
+                      {renameParams.newKey}
+                    </span>
+                    <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                      {renameParams.oldKey}
+                    </span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Click to rename</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
             <TooltipProvider>
               <Tooltip>
@@ -995,7 +1004,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                     onPointerLeave={handleValueMouseLeave}
                     onKeyDown={handleValueKeyDown}
                     onClick={() => {
-                      if (isAddStatic) {
+                      if (isAddStatic && !isMovedIn) {
                         handleStartEditAddStaticValue();
                       }
                     }}
@@ -1085,34 +1094,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         </div>
 
         {/* Modification label - always visible on the right */}
-        {!shouldShowMaskSelector && (
-          maskAndRename ? (
-            <div className="flex flex-col items-end gap-1 text-right">
-              <div>{(() => {
-                const params = maskTransformation?.params as any;
-                if (!params) return null;
-                const rawValue = attribute.value.replace(/^"|"$/g, '');
-                const rangeLabel = formatRangeLabel(
-                  params.maskStart,
-                  params.maskEnd,
-                  rawValue.length
-                );
-                return (
-                  <span className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
-                    MASK {rangeLabel}
-                  </span>
-                );
-              })()}</div>
-              <div>
-                <span className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
-                  RENAME KEY
-                </span>
-              </div>
-            </div>
-          ) : (
-            getModificationLabel()
-          )
-        )}
+        {!shouldShowMaskSelector && getModificationLabel()}
 
         {/* Action buttons - positioned absolutely on the right */}
         {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && (
