@@ -30,8 +30,8 @@ import {
   useHighlightedTransformationIds,
   useTransformationHighlightActions,
 } from '@/lib/state/hooks';
-import { Transformation, TransformationType } from '@/types/transformation-types';
-import { GripVertical, Trash2, SquareTerminal } from 'lucide-react';
+import { Transformation, TransformationType, type RawOTTLParams } from '@/types/transformation-types';
+import { GripVertical, Trash2, SquareTerminal, PenLine } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
 
@@ -47,6 +47,11 @@ export function TransformationQueuePanel({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
   const [isRawOTTLFormOpen, setIsRawOTTLFormOpen] = useState(false);
+  const [editingRawOttl, setEditingRawOttl] = useState<{
+    id: string;
+    sectionId: string;
+    statement: string;
+  } | null>(null);
 
   const orderedTransformations = useMemo(
     () =>
@@ -63,6 +68,25 @@ export function TransformationQueuePanel({
       activationConstraint: { distance: 4 },
     })
   );
+
+  const handleOpenRawOttlForm = useCallback(() => {
+    if (isRawOTTLFormOpen && !editingRawOttl) {
+      setIsRawOTTLFormOpen(false);
+      return;
+    }
+    setEditingRawOttl(null);
+    setIsRawOTTLFormOpen(true);
+  }, [isRawOTTLFormOpen, editingRawOttl]);
+
+  const handleRawOttlCancel = useCallback(() => {
+    setIsRawOTTLFormOpen(false);
+    setEditingRawOttl(null);
+  }, []);
+
+  const handleRawOttlSave = useCallback((_: string, __: string) => {
+    setIsRawOTTLFormOpen(false);
+    setEditingRawOttl(null);
+  }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
@@ -114,7 +138,7 @@ export function TransformationQueuePanel({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => setIsRawOTTLFormOpen((value) => !value)}
+                  onClick={handleOpenRawOttlForm}
                   className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!defaultSectionId}
                   aria-label="Add raw OTTL statement"
@@ -147,9 +171,11 @@ export function TransformationQueuePanel({
                 {isRawOTTLFormOpen && (
                   <div className="mb-2 rounded-md bg-gray-200 p-1">
                     <RawOTTLForm
-                      sectionId={defaultSectionId}
-                      onCancel={() => setIsRawOTTLFormOpen(false)}
-                      onSave={() => setIsRawOTTLFormOpen(false)}
+                      sectionId={editingRawOttl?.sectionId ?? defaultSectionId}
+                      transformationId={editingRawOttl?.id}
+                      initialStatement={editingRawOttl?.statement}
+                      onCancel={handleRawOttlCancel}
+                      onSave={handleRawOttlSave}
                     />
                   </div>
                 )}
@@ -166,6 +192,15 @@ export function TransformationQueuePanel({
                       showDropIndicator={
                         dropIndicatorId === transformation.id && transformation.id !== activeId
                       }
+                      onEditRawOttl={(rawTransformation) => {
+                        const params = rawTransformation.params as RawOTTLParams;
+                        setEditingRawOttl({
+                          id: rawTransformation.id,
+                          sectionId: rawTransformation.sectionId,
+                          statement: params.statement,
+                        });
+                        setIsRawOTTLFormOpen(true);
+                      }}
                     />
                   ))
                 )}
@@ -190,9 +225,10 @@ interface QueueItemProps {
   transformation: Transformation;
   onRemove: (id: string) => void;
   showDropIndicator: boolean;
+  onEditRawOttl?: (transformation: Transformation) => void;
 }
 
-function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemProps) {
+function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl }: QueueItemProps) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
     useSortable({ id: transformation.id });
   const [isHovered, setIsHovered] = useState(false);
@@ -213,6 +249,14 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
 
   const showActions = isHovered || isFocused;
+  const isRawOttlTransformation = transformation.type === TransformationType.RAW_OTTL;
+
+  const handleEditRawOttl = () => {
+    if (!isRawOttlTransformation || !onEditRawOttl) {
+      return;
+    }
+    onEditRawOttl(transformation);
+  };
 
   return (
     <div
@@ -257,9 +301,21 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         {details.isRawOTTL ? (
           <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
             <SquareTerminal className="h-4 w-4 text-gray-500" />
-            <span className="font-mono break-words text-left text-gray-800">
-              {descriptionContent}
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="font-mono break-words text-left text-gray-800 cursor-pointer"
+                    onClick={handleEditRawOttl}
+                  >
+                    {descriptionContent}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Click to edit</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         ) : (
           <div className="grid min-w-0 flex-1 grid-cols-[minmax(52px,max-content)_minmax(56px,1fr)_minmax(0,2fr)] items-start gap-1.5">
@@ -276,10 +332,29 @@ function QueueItem({ transformation, onRemove, showDropIndicator }: QueueItemPro
         )}
       </div>
       <div
-        className={`absolute inset-y-0 right-1 flex items-center transition-opacity ${
+        className={`absolute inset-y-0 right-1 flex items-center gap-1 transition-opacity ${
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
+        {isRawOttlTransformation && onEditRawOttl && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleEditRawOttl}
+                  className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Edit raw OTTL"
+                >
+                  <PenLine className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Edit raw OTTL</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>

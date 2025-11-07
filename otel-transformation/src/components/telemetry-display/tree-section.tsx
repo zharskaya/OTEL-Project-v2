@@ -10,7 +10,6 @@ import { AttributeRow } from './attribute-row';
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
-import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
 import { TransformationType, type RawOTTLParams } from '@/types/transformation-types';
@@ -26,7 +25,6 @@ interface TreeSectionProps {
 export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletionId, movedKeys }: TreeSectionProps) {
   const [isExpanded, setIsExpanded] = useState(section.expanded);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showRawOTTLForm, setShowRawOTTLForm] = useState(false);
   const [showSubstringForm, setShowSubstringForm] = useState(false);
   const [substringParams, setSubstringParams] = useState<{
     sourceKey: string;
@@ -107,32 +105,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       });
   }, [sectionTransformations, section.id, section.attributes]);
 
-  const rawOTTLAttributes = React.useMemo(() => {
-    return sectionTransformations
-      .filter((transformation) => transformation.type === TransformationType.RAW_OTTL)
-      .map((transformation) => {
-        const params = transformation.params as RawOTTLParams;
-
-        return {
-          id: `raw-ottl-${transformation.id}`,
-          path: `${section.id}.raw-ottl-${transformation.id}`,
-          sectionId: section.id,
-          key: transformation.id,
-          value: params.statement,
-          valueType: ValueType.STRING,
-          depth: 0,
-          modifications: [
-            {
-              transformationId: transformation.id,
-              type: transformation.type,
-              label: 'OTTL',
-              color: ModificationColor.BLUE,
-            },
-          ],
-          isRawOTTL: true,
-        } satisfies DisplayAttribute;
-      });
-  }, [sectionTransformations, section.id]);
+  const rawOTTLAttributes: DisplayAttribute[] = [];
 
   // Combine original attributes with added attributes based on creation logic
   const baseAttributes = React.useMemo(() => {
@@ -149,7 +122,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       orderedAttributes.push(attr);
     }
 
-    return [...staticAtTop, ...rawOttlEntries, ...orderedAttributes];
+    // Raw OTTL entries are not shown in the Input section.
+    return [...staticAtTop, ...orderedAttributes];
   }, [addedStaticOrSubstring, rawOTTLAttributes, section.attributes]);
   
   // Initialize stored order if it doesn't exist (only runs once per section, ever)
@@ -302,7 +276,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     setShowAddForm(false);
     setShowSubstringForm(false);
     setSubstringParams(null);
-    setShowRawOTTLForm(false);
   };
 
   return (
@@ -314,11 +287,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         isExpanded={isExpanded}
         onToggleExpand={toggleExpand}
         onAddStatic={handleAddStatic}
-        onAddRawOTTL={() => {
-          setShowRawOTTLForm((prev) => !prev);
-          setShowAddForm(false);
-          setShowSubstringForm(false);
-        }}
       />
 
       {/* Section Content */}
@@ -331,17 +299,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
               sectionId={section.id}
               onCancel={handleFormClose}
               onSave={handleFormClose}
-            />
-          )}
-
-          {/* Raw OTTL form */}
-          {showRawOTTLForm && (
-            <RawOTTLForm
-              sectionId={section.id}
-              onCancel={handleFormClose}
-              onSave={(_transformationId) => {
-                handleFormClose();
-              }}
             />
           )}
 

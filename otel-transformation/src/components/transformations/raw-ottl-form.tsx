@@ -8,18 +8,25 @@ import { TransformationType, TransformationStatus } from '@/types/transformation
 interface RawOTTLFormProps {
   sectionId: string;
   onCancel: () => void;
-  onSave: (transformationId: string) => void;
+  onSave: (transformationId: string, statement: string) => void;
+  initialStatement?: string;
+  transformationId?: string;
 }
 
-export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
-  const [input, setInput] = useState('');
+export function RawOTTLForm({ sectionId, onCancel, onSave, initialStatement = '', transformationId }: RawOTTLFormProps) {
+  const [input, setInput] = useState(initialStatement);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addTransformation } = useTransformationActions();
+  const { addTransformation, updateTransformation } = useTransformationActions();
 
   useEffect(() => {
     // Focus input when form mounts
     inputRef.current?.focus();
+    inputRef.current?.select();
   }, []);
+
+  useEffect(() => {
+    setInput(initialStatement);
+  }, [initialStatement]);
 
   const handleSave = () => {
     const statement = input.trim();
@@ -30,12 +37,25 @@ export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
       return;
     }
 
+    if (transformationId) {
+      updateTransformation(transformationId, {
+        params: {
+          type: TransformationType.RAW_OTTL,
+          statement,
+          insertionPoint: sectionId,
+        },
+        sectionId,
+      });
+      onSave(transformationId, statement);
+      return;
+    }
+
     // Raw OTTL: display exactly what user enters (no parsing)
     // Create raw OTTL transformation
-    const transformationId = `t-${Date.now()}`;
+    const newTransformationId = `t-${Date.now()}`;
 
     addTransformation({
-      id: transformationId,
+      id: newTransformationId,
       type: TransformationType.RAW_OTTL,
       order: 0, // Will be assigned by store
       sectionId,
@@ -48,7 +68,7 @@ export function RawOTTLForm({ sectionId, onCancel, onSave }: RawOTTLFormProps) {
       },
     });
 
-    onSave(transformationId);
+    onSave(newTransformationId, statement);
   };
 
   const handleClickOutside = (e: React.MouseEvent) => {
