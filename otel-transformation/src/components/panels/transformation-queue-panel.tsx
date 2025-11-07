@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type ReactNode,
 } from 'react';
 import {
   DndContext,
@@ -557,7 +558,7 @@ export function TransformationQueuePanel({
 interface RowDetails {
   action: string;
   section?: string;
-  description: string;
+  description: ReactNode;
   isRawOTTL?: boolean;
   actionClassName: string;
 }
@@ -666,16 +667,20 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
             </TooltipProvider>
           </div>
         ) : (
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-900">
-              <span className={`shrink-0 ${actionClassName}`}>{labelText}</span>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName}`}
+            >
+              {labelText}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-                <span className="min-w-0 truncate text-[11px] font-medium normal-case tracking-normal text-gray-500">
+                <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {sectionText}
                 </span>
               ) : null}
-            </span>
-            <span className="text-xs text-gray-600 break-words">{descriptionContent}</span>
+              <span className="font-mono text-xs text-gray-600 break-words">{descriptionContent}</span>
+            </div>
           </div>
         )}
       </div>
@@ -772,7 +777,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
         return {
           action: 'MOVE',
           section: destinationLabel,
-          description: `${params.key ?? ''} -> [${destinationLabel}]`.trim(),
+          description: (
+            <>
+              <span className="text-gray-900">{params.key ?? ''}</span>
+              {` → [${destinationLabel}]`}
+            </>
+          ),
           actionClassName: getActionClassName('MOVE'),
         };
       }
@@ -781,7 +791,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         action: 'ADD',
         section: formatSectionTitle(transformation.sectionId),
-        description: `${params.key ?? ''} = ${valueText}`.trim(),
+        description: (
+          <>
+            <span className="text-gray-900">{params.key ?? ''}</span>
+            {` = ${valueText}`}
+          </>
+        ),
         actionClassName: getActionClassName('ADD'),
       };
     }
@@ -796,7 +811,14 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         action: 'ADD',
         section: formatSectionTitle(transformation.sectionId),
-        description: `${newKey ?? ''} = SUBSTR (${sourceKey ?? ''}, ${rangeLabel})`.trim(),
+        description: (
+          <>
+            <span className="text-gray-900">{newKey ?? ''}</span>
+            {` = SUBSTR (`}
+            <span className="text-gray-900">{sourceKey ?? ''}</span>
+            {`, ${rangeLabel})`}
+          </>
+        ),
         actionClassName: getActionClassName('ADD'),
       };
     }
@@ -806,7 +828,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         action: 'DELETE',
         section: formatSectionTitle(transformation.sectionId),
-        description: (keyLabel ?? '').trim() || '--',
+        description: (
+          <span className="text-gray-900">{(keyLabel ?? '').trim() || '--'}</span>
+        ),
         actionClassName: getActionClassName('DELETE'),
       };
     }
@@ -816,7 +840,12 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         action: 'MASK',
         section: formatSectionTitle(transformation.sectionId),
-        description: `${attributeKey ?? ''} ${rangeLabel}`.trim(),
+        description: (
+          <>
+            <span className="text-gray-900">{attributeKey ?? ''}</span>
+            {` ${rangeLabel}`}
+          </>
+        ),
         actionClassName: getActionClassName('MASK'),
       };
     }
@@ -825,7 +854,13 @@ function getRowDetails(transformation: Transformation): RowDetails {
       return {
         action: 'RENAME',
         section: formatSectionTitle(transformation.sectionId),
-        description: `${oldKey ?? ''} -> ${newKey ?? ''}`.trim(),
+        description: (
+          <>
+            <span className="text-gray-900">{oldKey ?? ''}</span>
+            {' → '}
+            <span className="text-gray-900">{newKey ?? ''}</span>
+          </>
+        ),
         actionClassName: getActionClassName('RENAME'),
       };
     }
@@ -851,19 +886,19 @@ function getRowDetails(transformation: Transformation): RowDetails {
 function getActionClassName(action: string): string {
   switch (action) {
     case 'ADD':
-      return 'text-emerald-600';
+      return 'bg-green-600 text-white';
     case 'MOVE':
-      return 'text-amber-600';
+      return 'bg-green-600 text-white';
     case 'DELETE':
-      return 'text-rose-600';
+      return 'bg-red-600 text-white';
     case 'MASK':
-      return 'text-sky-600';
+      return 'bg-blue-600 text-white';
     case 'RENAME':
-      return 'text-indigo-600';
+      return 'bg-indigo-600 text-white';
     case 'OTTL':
-      return 'text-purple-600';
+      return 'bg-purple-600 text-white';
     default:
-      return 'text-gray-700';
+      return 'bg-gray-600 text-white';
   }
 }
 
