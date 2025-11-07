@@ -622,10 +622,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
     if (attribute.modifications.length === 0) return null;
 
+    const addLabel = addStaticParams?.movedFromSectionId ? 'MOVED IN' : 'ADD';
     const labelMap: Record<string, { text: string; color: string }> = {
-      'add': { text: 'ADD', color: 'bg-green-600 text-white' },
-      'add-static': { text: 'ADD', color: 'bg-green-600 text-white' },
-      'add-substring': { text: 'ADD', color: 'bg-green-600 text-white' },
+      'add': { text: addLabel, color: 'bg-green-600 text-white' },
+      'add-static': { text: addLabel, color: 'bg-green-600 text-white' },
+      'add-substring': { text: addLabel, color: 'bg-green-600 text-white' },
       'raw-ottl': { text: 'OTTL', color: 'bg-purple-600 text-white' },
       'delete': { text: 'DELETE', color: 'bg-red-600 text-white' },
       'mask': { text: 'MASK', color: 'bg-blue-600 text-white' },
