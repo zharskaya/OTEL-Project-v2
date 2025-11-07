@@ -30,7 +30,13 @@ import {
   useHighlightedTransformationIds,
   useTransformationHighlightActions,
 } from '@/lib/state/hooks';
-import { Transformation, TransformationType, type RawOTTLParams } from '@/types/transformation-types';
+import {
+  Transformation,
+  TransformationType,
+  type RawOTTLParams,
+  type AddStaticParams,
+  type DeleteParams,
+} from '@/types/transformation-types';
 import { GripVertical, Trash2, SquareTerminal, PenLine } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
@@ -60,6 +66,19 @@ export function TransformationQueuePanel({
       ),
     [transformations]
   );
+
+  const displayTransformations = useMemo(() => {
+    const skipIds = new Set<string>();
+    orderedTransformations.forEach((transformation) => {
+      if (transformation.type === TransformationType.DELETE) {
+        const params = transformation.params as DeleteParams;
+        if (params.movedToSectionId) {
+          skipIds.add(transformation.id);
+        }
+      }
+    });
+    return orderedTransformations.filter((transformation) => !skipIds.has(transformation.id));
+  }, [orderedTransformations]);
 
   const defaultSectionId = sections[0]?.id ?? '';
 
@@ -169,7 +188,7 @@ export function TransformationQueuePanel({
             onDragCancel={handleDragCancel}
           >
             <SortableContext
-              items={orderedTransformations.map((item) => item.id)}
+              items={displayTransformations.map((item) => item.id)}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-1 p-1">
@@ -183,12 +202,12 @@ export function TransformationQueuePanel({
                     />
                   </div>
                 )}
-                {orderedTransformations.length === 0 && !rawOttlEditor ? (
+                {displayTransformations.length === 0 && !rawOttlEditor ? (
                   <div className="p-1 text-center text-sm text-gray-500">
                     No transformations yet. Add one from the telemetry tree to build a queue.
                   </div>
                 ) : (
-                  orderedTransformations.map((transformation) => {
+                  displayTransformations.map((transformation) => {
                     if (
                       rawOttlEditor?.mode === 'edit' &&
                       rawOttlEditor.transformationId === transformation.id
@@ -403,15 +422,33 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
 function getRowDetails(transformation: Transformation): RowDetails {
   switch (transformation.params.type) {
     case TransformationType.ADD_STATIC: {
-      const { key, value } = transformation.params;
-      const valueText = JSON.stringify(value ?? '');
+      const params = transformation.params as AddStaticParams;
+
+      if (params.movedFromSectionId) {
+        const sourceLabel = formatMoveSectionLabel(params.movedFromSectionId, params.movedFromSectionLabel);
+        const destinationLabel = formatMoveSectionLabel(transformation.sectionId);
+        return {
+          label: 'MOVED',
+          labelClassName: 'bg-amber-600 text-white',
+          section: '',
+          description: (
+            <span className="text-xs text-gray-600">
+              Moved {sourceLabel}{' '}
+              <span className="font-semibold text-gray-900">{params.key}</span>
+              {' '}to {destinationLabel}
+            </span>
+          ),
+        };
+      }
+
+      const valueText = JSON.stringify(params.value ?? '');
       return {
         label: 'ADD',
         labelClassName: 'bg-green-600 text-white',
         section: formatSectionLabel(transformation.sectionId),
         description: (
           <>
-            <span className="font-semibold text-gray-900">{key}</span>
+            <span className="font-semibold text-gray-900">{params.key}</span>
             <span>{` = ${valueText}`}</span>
           </>
         ),
@@ -498,6 +535,24 @@ function getRowDetails(transformation: Transformation): RowDetails {
         description: '--',
       };
   }
+}
+
+function formatMoveSectionLabel(sectionId?: string, fallbackLabel?: string): string {
+  const base = fallbackLabel && fallbackLabel.trim().length > 0
+    ? fallbackLabel
+    : sectionId
+      ? formatSectionLabel(sectionId)
+      : '';
+
+  if (!base) {
+    return 'Unknown section';
+  }
+
+  const titleCase = base
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  return titleCase.replace(/\bAttr\b/i, 'Attribute');
 }
 
 function formatSectionLabel(sectionId: string): string {

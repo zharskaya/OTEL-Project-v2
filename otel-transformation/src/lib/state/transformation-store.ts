@@ -7,38 +7,6 @@ import {
 } from '@/types/transformation-types';
 import { TransformationEngine } from '@/lib/transformations/transformation-engine';
 
-const ADD_TRANSFORMATION_TYPES: TransformationType[] = [
-  TransformationType.ADD_STATIC,
-  TransformationType.ADD_SUBSTRING,
-  TransformationType.RAW_OTTL,
-];
-
-const DELETE_TRANSFORMATION_TYPES: TransformationType[] = [
-  TransformationType.DELETE,
-];
-
-function getTransformationPriority(type: TransformationType) {
-  if (ADD_TRANSFORMATION_TYPES.includes(type)) return 0;
-  if (DELETE_TRANSFORMATION_TYPES.includes(type)) return 1;
-  return 2;
-}
-
-function prioritizeTransformations(transformations: Transformation[]) {
-  const decorated = transformations.map((item, index) => ({ item, index }));
-
-  decorated.sort((first, second) => {
-    const priorityDelta =
-      getTransformationPriority(first.item.type) - getTransformationPriority(second.item.type);
-    if (priorityDelta !== 0) return priorityDelta;
-    return first.index - second.index;
-  });
-
-  return decorated.map((entry, index) => ({
-    ...entry.item,
-    order: index,
-  }));
-}
-
 interface TransformationStore {
   transformations: Transformation[];
   lastExecutionResult: TransformationResult | null;
@@ -76,9 +44,12 @@ export const useTransformationStore = create<TransformationStore>(
       set((state) => {
         const next = [
           ...state.transformations,
-          { ...transformation, order: state.transformations.length },
+          {
+            ...transformation,
+            order: state.transformations.length,
+          },
         ];
-        return { transformations: prioritizeTransformations(next) };
+        return { transformations: next };
       }),
 
     updateTransformation: (id, params) =>
@@ -86,13 +57,13 @@ export const useTransformationStore = create<TransformationStore>(
         const updated = state.transformations.map((t) =>
           t.id === id ? { ...t, ...params } : t
         );
-        return { transformations: prioritizeTransformations(updated) };
+        return { transformations: updated };
       }),
 
     removeTransformation: (id) =>
       set((state) => {
         const filtered = state.transformations.filter((t) => t.id !== id);
-        return { transformations: prioritizeTransformations(filtered) };
+        return { transformations: filtered.map((item, index) => ({ ...item, order: index })) };
       }),
 
     reorderTransformations: (sourceId, destinationIndex) =>
@@ -105,7 +76,7 @@ export const useTransformationStore = create<TransformationStore>(
         const [removed] = transformations.splice(sourceIndex, 1);
         transformations.splice(destinationIndex, 0, removed);
 
-        return { transformations: prioritizeTransformations(transformations) };
+        return { transformations: transformations.map((item, index) => ({ ...item, order: index })) };
       }),
 
     executeTransformations: (inputData) => {
