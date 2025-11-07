@@ -46,10 +46,10 @@ export function TransformationQueuePanel({
   const { removeTransformation, reorderTransformations } = useTransformationActions();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
-  const [isRawOTTLFormOpen, setIsRawOTTLFormOpen] = useState(false);
-  const [editingRawOttl, setEditingRawOttl] = useState<{
-    id: string;
+  const [rawOttlEditor, setRawOttlEditor] = useState<{
+    mode: 'create' | 'edit';
     sectionId: string;
+    transformationId?: string;
     statement: string;
   } | null>(null);
 
@@ -69,23 +69,28 @@ export function TransformationQueuePanel({
     })
   );
 
-  const handleOpenRawOttlForm = useCallback(() => {
-    if (isRawOTTLFormOpen && !editingRawOttl) {
-      setIsRawOTTLFormOpen(false);
+  const handleAddRawOttl = useCallback(() => {
+    if (!defaultSectionId) {
       return;
     }
-    setEditingRawOttl(null);
-    setIsRawOTTLFormOpen(true);
-  }, [isRawOTTLFormOpen, editingRawOttl]);
+    setRawOttlEditor((current) => {
+      if (current && current.mode === 'create') {
+        return null;
+      }
+      return {
+        mode: 'create',
+        sectionId: defaultSectionId,
+        statement: '',
+      };
+    });
+  }, [defaultSectionId]);
 
   const handleRawOttlCancel = useCallback(() => {
-    setIsRawOTTLFormOpen(false);
-    setEditingRawOttl(null);
+    setRawOttlEditor(null);
   }, []);
 
-  const handleRawOttlSave = useCallback((_: string, __: string) => {
-    setIsRawOTTLFormOpen(false);
-    setEditingRawOttl(null);
+  const handleRawOttlSave = useCallback((_id: string, _statement: string) => {
+    setRawOttlEditor(null);
   }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -138,7 +143,7 @@ export function TransformationQueuePanel({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={handleOpenRawOttlForm}
+                  onClick={handleAddRawOttl}
                   className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!defaultSectionId}
                   aria-label="Add raw OTTL statement"
@@ -168,41 +173,59 @@ export function TransformationQueuePanel({
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-1 p-1">
-                {isRawOTTLFormOpen && (
-                  <div className="mb-2 rounded-md bg-gray-200 p-1">
+                {rawOttlEditor?.mode === 'create' && (
+                  <div className="mb-1 rounded-md bg-gray-200 p-1">
                     <RawOTTLForm
-                      sectionId={editingRawOttl?.sectionId ?? defaultSectionId}
-                      transformationId={editingRawOttl?.id}
-                      initialStatement={editingRawOttl?.statement}
+                      sectionId={rawOttlEditor.sectionId}
+                      initialStatement={rawOttlEditor.statement}
                       onCancel={handleRawOttlCancel}
                       onSave={handleRawOttlSave}
                     />
                   </div>
                 )}
-                {orderedTransformations.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-gray-300 bg-white p-1 text-center text-sm text-gray-500">
+                {orderedTransformations.length === 0 && !rawOttlEditor ? (
+                  <div className="p-1 text-center text-sm text-gray-500">
                     No transformations yet. Add one from the telemetry tree to build a queue.
                   </div>
                 ) : (
-                  orderedTransformations.map((transformation) => (
-                    <QueueItem
-                      key={transformation.id}
-                      transformation={transformation}
-                      onRemove={removeTransformation}
-                      showDropIndicator={
-                        dropIndicatorId === transformation.id && transformation.id !== activeId
-                      }
-                      onEditRawOttl={(rawTransformation) => {
-                        const params = rawTransformation.params as RawOTTLParams;
-                        setEditingRawOttl({
-                          id: rawTransformation.id,
-                          sectionId: rawTransformation.sectionId,
-                          statement: params.statement,
-                        });
-                        setIsRawOTTLFormOpen(true);
-                      }}
-                    />
-                  ))
+                  orderedTransformations.map((transformation) => {
+                    if (
+                      rawOttlEditor?.mode === 'edit' &&
+                      rawOttlEditor.transformationId === transformation.id
+                    ) {
+                      return (
+                        <div key={transformation.id} className="mb-0.5 rounded-md bg-gray-200 p-1">
+                          <RawOTTLForm
+                            sectionId={rawOttlEditor.sectionId}
+                            transformationId={transformation.id}
+                            initialStatement={rawOttlEditor.statement}
+                            onCancel={handleRawOttlCancel}
+                            onSave={handleRawOttlSave}
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <QueueItem
+                        key={transformation.id}
+                        transformation={transformation}
+                        onRemove={removeTransformation}
+                        showDropIndicator={
+                          dropIndicatorId === transformation.id && transformation.id !== activeId
+                        }
+                        onEditRawOttl={(rawTransformation) => {
+                          const params = rawTransformation.params as RawOTTLParams;
+                          setRawOttlEditor({
+                            mode: 'edit',
+                            sectionId: rawTransformation.sectionId,
+                            transformationId: rawTransformation.id,
+                            statement: params.statement,
+                          });
+                        }}
+                      />
+                    );
+                  })
                 )}
               </div>
             </SortableContext>
@@ -343,14 +366,14 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
                 <button
                   type="button"
                   onClick={handleEditRawOttl}
-                  className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   aria-label="Edit raw OTTL"
                 >
                   <PenLine className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Edit raw OTTL</p>
+                <p>Edit raw OTTL statement</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
