@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -106,14 +114,42 @@ export function TransformationQueuePanel({
   }));
 
   const transformationCount = displayTransformations.length;
+  const previousTransformationCountRef = useRef(transformationCount);
+  const previousTransformationIdsRef = useRef<string[]>([]);
+  const previousBoundarySlotsRef = useRef(boundarySlots);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    previousBoundarySlotsRef.current = boundarySlots;
+  }, [boundarySlots]);
+
+  useLayoutEffect(() => {
+    const previousCount = previousTransformationCountRef.current;
+    const previousIds = previousTransformationIdsRef.current;
+    const previousBoundary = previousBoundarySlotsRef.current;
+    const currentIds = displayTransformations.map((item) => item.id);
+
+    const removedIds = previousIds.filter((id) => !currentIds.includes(id));
+    const removedInsideRange = removedIds.reduce((accumulator, id) => {
+      const index = previousIds.indexOf(id);
+      if (index === -1) {
+        return accumulator;
+      }
+
+      if (index >= previousBoundary.start && index < previousBoundary.end) {
+        return accumulator + 1;
+      }
+
+      return accumulator;
+    }, 0);
+
     setBoundarySlots((current) => {
       if (transformationCount <= 1) {
         const nextEnd = transformationCount === 0 ? 0 : 1;
+
         if (current.start === 0 && current.end === nextEnd) {
           return current;
         }
+
         return {
           start: 0,
           end: nextEnd,
@@ -122,7 +158,21 @@ export function TransformationQueuePanel({
 
       const maxStart = Math.max(0, Math.min(current.start, transformationCount - 1));
       const minEnd = Math.max(maxStart + 1, 1);
-      const clampedEnd = Math.min(Math.max(current.end, minEnd), transformationCount);
+      const hasGrown = transformationCount > previousCount;
+      const growth = hasGrown ? transformationCount - previousCount : 0;
+      const endWasLast = previousCount === current.end;
+      const desiredEnd = (() => {
+        if (hasGrown && endWasLast) {
+          return current.end + growth;
+        }
+
+        if (!hasGrown && removedInsideRange > 0) {
+          return current.end - removedInsideRange;
+        }
+
+        return current.end;
+      })();
+      const clampedEnd = Math.min(Math.max(desiredEnd, minEnd), transformationCount);
 
       if (maxStart === current.start && clampedEnd === current.end) {
         return current;
@@ -133,7 +183,45 @@ export function TransformationQueuePanel({
         end: clampedEnd,
       };
     });
+
+    previousTransformationCountRef.current = transformationCount;
   }, [transformationCount]);
+
+  useLayoutEffect(() => {
+    const currentIds = displayTransformations.map((item) => item.id);
+    const previousIds = previousTransformationIdsRef.current;
+
+    if (currentIds.length === 0) {
+      previousTransformationIdsRef.current = currentIds;
+      return;
+    }
+
+    const newIds = currentIds.filter((id) => !previousIds.includes(id));
+
+    const endIsLast = boundarySlots.end === currentIds.length;
+
+    if (newIds.length > 0 && endIsLast && boundarySlots.end > 0) {
+      const targetIndex = Math.min(
+        Math.max(boundarySlots.end - 1, 0),
+        currentIds.length - 1
+      );
+
+      newIds.forEach((id) => {
+        const currentIndex = currentIds.indexOf(id);
+        if (currentIndex === -1) {
+          return;
+        }
+
+        if (currentIndex <= targetIndex) {
+          return;
+        }
+
+        reorderTransformations(id, targetIndex);
+      });
+    }
+
+    previousTransformationIdsRef.current = currentIds;
+  }, [displayTransformations, boundarySlots.end, reorderTransformations]);
 
   const defaultSectionId = sections[0]?.id ?? '';
 
@@ -541,16 +629,22 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
       {showDropIndicator && (
         <span className="absolute left-2 right-2 top-0 h-0.5 bg-blue-500" aria-hidden="true" />
       )}
-      <button
-        type="button"
-        className="flex h-6 w-6 items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing rounded focus:outline-none focus:ring-2 focus:ring-gray-500/40"
-        title="Drag to reorder"
-        aria-label="Drag to reorder transformation"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      <Tooltip open={isDragging ? false : undefined}>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing rounded focus:outline-none focus:ring-2 focus:ring-gray-500/40"
+            aria-label="Drag to reorder transformation"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="bg-gray-900 text-white border-none">
+          <p>Drag to reorder transformations</p>
+        </TooltipContent>
+      </Tooltip>
       <div className="relative flex min-w-0 flex-1 items-center pr-10">
         {details.isRawOTTL ? (
           <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
@@ -644,27 +738,25 @@ function QueueBoundaryMarker({ id, label }: QueueBoundaryMarkerProps) {
     transform: CSS.Transform.toString(transform),
     transition,
   };
-
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex items-center gap-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 ${
+      className={`relative group flex items-center gap-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 transition-colors ${
         isDragging ? 'bg-gray-200' : ''
       }`}
     >
+      <span className="h-0.5 w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
       <button
         type="button"
-        className="flex h-6 w-6 items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing rounded focus:outline-none focus:ring-2 focus:ring-gray-500/40"
+        className="flex items-center justify-center whitespace-nowrap rounded px-1 py-0.5 uppercase text-gray-600 cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 hover:bg-blue-500 hover:text-white"
         aria-label={`${label} boundary`}
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="h-4 w-4" />
+        {label}
       </button>
-      <span className="h-0.5 w-full bg-gray-300" aria-hidden="true" />
-      <span className="text-gray-600">{label}</span>
-      <span className="h-0.5 w-full bg-gray-300" aria-hidden="true" />
+      <span className="h-0.5 w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
     </div>
   );
 }
