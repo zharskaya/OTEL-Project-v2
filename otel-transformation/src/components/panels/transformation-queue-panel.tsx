@@ -146,13 +146,13 @@ export function TransformationQueuePanel({
                   onClick={handleAddRawOttl}
                   className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={!defaultSectionId}
-                  aria-label="Add raw OTTL statement"
+                  aria-label="Add raw OTTL transformation"
                 >
                   <SquareTerminal className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Add raw OTTL statement</p>
+                <p>Add raw OTTL transformation</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -373,7 +373,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Edit raw OTTL statement</p>
+                <p>Edit raw OTTL transformation</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
