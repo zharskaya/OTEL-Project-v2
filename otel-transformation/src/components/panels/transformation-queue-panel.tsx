@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   DndContext,
   DragEndEvent,
@@ -13,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
+  arrayMove,
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
@@ -41,6 +42,22 @@ import { GripVertical, Trash2, SquareTerminal, PenLine } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
 
+function countTransformationsBeforeIndex(
+  items: string[],
+  index: number,
+  startMarkerId: string,
+  endMarkerId: string
+): number {
+  let count = 0;
+  for (let position = 0; position < index; position += 1) {
+    const itemId = items[position];
+    if (itemId !== startMarkerId && itemId !== endMarkerId) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
 }
@@ -67,18 +84,56 @@ export function TransformationQueuePanel({
     [transformations]
   );
 
+  const START_MARKER_ID = '__marker-start__';
+  const END_MARKER_ID = '__marker-end__';
+
   const displayTransformations = useMemo(() => {
     const skipIds = new Set<string>();
     orderedTransformations.forEach((transformation) => {
       if (transformation.type === TransformationType.DELETE) {
         const params = transformation.params as DeleteParams;
-        if (params.movedToSectionId) {
+        if ((params as DeleteParams).movedToSectionId) {
           skipIds.add(transformation.id);
         }
       }
     });
     return orderedTransformations.filter((transformation) => !skipIds.has(transformation.id));
   }, [orderedTransformations]);
+
+  const [boundarySlots, setBoundarySlots] = useState(() => ({
+    start: 0,
+    end: displayTransformations.length > 0 ? displayTransformations.length : 0,
+  }));
+
+  const transformationCount = displayTransformations.length;
+
+  useEffect(() => {
+    setBoundarySlots((current) => {
+      if (transformationCount <= 1) {
+        const nextEnd = transformationCount === 0 ? 0 : 1;
+        if (current.start === 0 && current.end === nextEnd) {
+          return current;
+        }
+        return {
+          start: 0,
+          end: nextEnd,
+        };
+      }
+
+      const maxStart = Math.max(0, Math.min(current.start, transformationCount - 1));
+      const minEnd = Math.max(maxStart + 1, 1);
+      const clampedEnd = Math.min(Math.max(current.end, minEnd), transformationCount);
+
+      if (maxStart === current.start && clampedEnd === current.end) {
+        return current;
+      }
+
+      return {
+        start: maxStart,
+        end: clampedEnd,
+      };
+    });
+  }, [transformationCount]);
 
   const defaultSectionId = sections[0]?.id ?? '';
 
@@ -87,6 +142,28 @@ export function TransformationQueuePanel({
       activationConstraint: { distance: 4 },
     })
   );
+
+  const sortableItems = useMemo(() => {
+    if (transformationCount <= 1) {
+      return displayTransformations.map((item) => item.id);
+    }
+
+    const items: string[] = [];
+
+    for (let index = 0; index < transformationCount; index += 1) {
+      if (index === boundarySlots.start) {
+        items.push(START_MARKER_ID);
+      }
+
+      items.push(displayTransformations[index].id);
+
+      if (index + 1 === boundarySlots.end) {
+        items.push(END_MARKER_ID);
+      }
+    }
+
+    return items;
+  }, [displayTransformations, boundarySlots, transformationCount, START_MARKER_ID, END_MARKER_ID]);
 
   const handleAddRawOttl = useCallback(() => {
     if (!defaultSectionId) {
@@ -122,17 +199,128 @@ export function TransformationQueuePanel({
     setDropIndicatorId(over ? String(over.id) : null);
   }, []);
 
+  const handleStartMarkerDrop = useCallback(
+    (overId: string) => {
+      if (transformationCount <= 1 || overId === START_MARKER_ID) {
+        return;
+      }
+
+      const activeIndex = sortableItems.indexOf(START_MARKER_ID);
+      const overIndex = sortableItems.indexOf(overId);
+
+      if (activeIndex === -1 || overIndex === -1) {
+        return;
+      }
+
+      const reordered = arrayMove(sortableItems, activeIndex, overIndex);
+      const markerIndex = reordered.indexOf(START_MARKER_ID);
+
+      if (markerIndex === -1) {
+        return;
+      }
+
+      const transformationsBefore = countTransformationsBeforeIndex(
+        reordered,
+        markerIndex,
+        START_MARKER_ID,
+        END_MARKER_ID
+      );
+
+      setBoundarySlots((current) => {
+        const maxStart = Math.min(transformationCount - 1, current.end - 1);
+        const nextStart = Math.max(0, Math.min(transformationsBefore, maxStart));
+
+        if (nextStart === current.start) {
+          return current;
+        }
+
+        return {
+          start: nextStart,
+          end: current.end,
+        };
+      });
+    },
+    [setBoundarySlots, sortableItems, transformationCount]
+  );
+
+  const handleEndMarkerDrop = useCallback(
+    (overId: string) => {
+      if (transformationCount <= 1 || overId === END_MARKER_ID) {
+        return;
+      }
+
+      const activeIndex = sortableItems.indexOf(END_MARKER_ID);
+      const overIndex = sortableItems.indexOf(overId);
+
+      if (activeIndex === -1 || overIndex === -1) {
+        return;
+      }
+
+      const reordered = arrayMove(sortableItems, activeIndex, overIndex);
+      const markerIndex = reordered.indexOf(END_MARKER_ID);
+
+      if (markerIndex === -1) {
+        return;
+      }
+
+      const transformationsBefore = countTransformationsBeforeIndex(
+        reordered,
+        markerIndex,
+        START_MARKER_ID,
+        END_MARKER_ID
+      );
+
+      setBoundarySlots((current) => {
+        const minEnd = Math.max(current.start + 1, 1);
+        const nextEnd = Math.max(minEnd, Math.min(transformationsBefore, transformationCount));
+
+        if (nextEnd === current.end) {
+          return current;
+        }
+
+        return {
+          start: current.start,
+          end: nextEnd,
+        };
+      });
+    },
+    [setBoundarySlots, sortableItems, transformationCount]
+  );
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
-      if (!over || active.id === over.id) {
+      if (!over) {
+        setActiveId(null);
+        setDropIndicatorId(null);
+        return;
+      }
+
+      const activeId = String(active.id);
+      const overId = String(over.id);
+
+      if (activeId === START_MARKER_ID) {
+        handleStartMarkerDrop(overId);
+        setActiveId(null);
+        setDropIndicatorId(null);
+        return;
+      }
+
+      if (activeId === END_MARKER_ID) {
+        handleEndMarkerDrop(overId);
+        setActiveId(null);
+        setDropIndicatorId(null);
+        return;
+      }
+
+      if (activeId === overId) {
         setActiveId(null);
         setDropIndicatorId(null);
         return;
       }
 
       const destinationIndex = orderedTransformations.findIndex(
-        (item) => item.id === over.id
+        (item) => item.id === overId
       );
 
       if (destinationIndex === -1) {
@@ -145,7 +333,7 @@ export function TransformationQueuePanel({
       setActiveId(null);
       setDropIndicatorId(null);
     },
-    [orderedTransformations, reorderTransformations]
+    [orderedTransformations, reorderTransformations, handleStartMarkerDrop, handleEndMarkerDrop, START_MARKER_ID, END_MARKER_ID]
   );
 
   const handleDragCancel = useCallback((_: DragCancelEvent) => {
@@ -188,7 +376,7 @@ export function TransformationQueuePanel({
             onDragCancel={handleDragCancel}
           >
             <SortableContext
-              items={displayTransformations.map((item) => item.id)}
+              items={sortableItems}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-1 p-1">
@@ -207,7 +395,31 @@ export function TransformationQueuePanel({
                     No transformations yet. Add one from the telemetry tree to build a queue.
                   </div>
                 ) : (
-                  displayTransformations.map((transformation) => {
+                  sortableItems.map((itemId) => {
+                    if (itemId === START_MARKER_ID) {
+                      return displayTransformations.length > 1 ? (
+                        <QueueBoundaryMarker
+                          key={itemId}
+                          id={itemId}
+                          label="Start"
+                        />
+                      ) : null;
+                    }
+                    if (itemId === END_MARKER_ID) {
+                      return displayTransformations.length > 1 ? (
+                        <QueueBoundaryMarker
+                          key={itemId}
+                          id={itemId}
+                          label="End"
+                        />
+                      ) : null;
+                    }
+
+                    const transformation = displayTransformations.find((item) => item.id === itemId);
+                    if (!transformation) {
+                      return null;
+                    }
+
                     if (
                       rawOttlEditor?.mode === 'edit' &&
                       rawOttlEditor.transformationId === transformation.id
@@ -415,6 +627,44 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
           </Tooltip>
         </TooltipProvider>
       </div>
+    </div>
+  );
+}
+
+interface QueueBoundaryMarkerProps {
+  id: string;
+  label: string;
+}
+
+function QueueBoundaryMarker({ id, label }: QueueBoundaryMarkerProps) {
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`relative flex items-center gap-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 ${
+        isDragging ? 'bg-gray-200' : ''
+      }`}
+    >
+      <button
+        type="button"
+        className="flex h-6 w-6 items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing rounded focus:outline-none focus:ring-2 focus:ring-gray-500/40"
+        aria-label={`${label} boundary`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="h-0.5 w-full bg-gray-300" aria-hidden="true" />
+      <span className="text-gray-600">{label}</span>
+      <span className="h-0.5 w-full bg-gray-300" aria-hidden="true" />
     </div>
   );
 }
