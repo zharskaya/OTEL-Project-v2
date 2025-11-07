@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from 'react';
 import {
   DndContext,
@@ -556,11 +555,11 @@ export function TransformationQueuePanel({
 }
 
 interface RowDetails {
-  label: string;
-  labelClassName: string;
+  action: string;
   section?: string;
-  description: ReactNode;
+  description: string;
   isRawOTTL?: boolean;
+  actionClassName: string;
 }
 
 interface QueueItemProps {
@@ -585,9 +584,10 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
   };
 
   const details = getRowDetails(transformation);
-  const labelText = details.label;
+  const labelText = details.action;
   const sectionText = details.section ?? '';
   const descriptionContent = details.description;
+  const actionClassName = details.actionClassName;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
 
   const showActions = isHovered || isFocused;
@@ -666,14 +666,14 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
             </TooltipProvider>
           </div>
         ) : (
-          <div className="grid min-w-0 flex-1 grid-cols-[minmax(52px,max-content)_minmax(56px,1fr)_minmax(0,2fr)] items-start gap-1.5">
-            <span
-              className={`inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide ${details.labelClassName}`}
-            >
-              {labelText}
-            </span>
-            <span className="min-w-0 whitespace-normal break-words text-[11px] font-semibold uppercase tracking-wide text-gray-500 leading-tight">
-              {sectionText}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-900">
+              <span className={`shrink-0 ${actionClassName}`}>{labelText}</span>
+              {sectionText ? (
+                <span className="min-w-0 truncate text-[11px] font-medium normal-case tracking-normal text-gray-500">
+                  {sectionText}
+                </span>
+              ) : null}
             </span>
             <span className="text-xs text-gray-600 break-words">{descriptionContent}</span>
           </div>
@@ -770,30 +770,19 @@ function getRowDetails(transformation: Transformation): RowDetails {
         const sourceLabel = formatMoveSectionLabel(params.movedFromSectionId, params.movedFromSectionLabel);
         const destinationLabel = formatMoveSectionLabel(transformation.sectionId);
         return {
-          label: 'MOVED',
-          labelClassName: 'bg-amber-600 text-white',
-          section: '',
-          description: (
-            <span className="text-xs text-gray-600">
-              Moved {sourceLabel}{' '}
-              <span className="font-semibold text-gray-900">{params.key}</span>
-              {' '}to {destinationLabel}
-            </span>
-          ),
+          action: 'MOVE',
+          section: destinationLabel,
+          description: `${params.key ?? ''} -> [${destinationLabel}]`.trim(),
+          actionClassName: getActionClassName('MOVE'),
         };
       }
 
       const valueText = JSON.stringify(params.value ?? '');
       return {
-        label: 'ADD',
-        labelClassName: 'bg-green-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
-        description: (
-          <>
-            <span className="font-semibold text-gray-900">{params.key}</span>
-            <span>{` = ${valueText}`}</span>
-          </>
-        ),
+        action: 'ADD',
+        section: formatSectionTitle(transformation.sectionId),
+        description: `${params.key ?? ''} = ${valueText}`.trim(),
+        actionClassName: getActionClassName('ADD'),
       };
     }
     case TransformationType.ADD_SUBSTRING: {
@@ -805,77 +794,76 @@ function getRowDetails(transformation: Transformation): RowDetails {
       } = transformation.params;
       const rangeLabel = formatRangeLabel(substringStart, substringEnd);
       return {
-        label: 'ADD',
-        labelClassName: 'bg-green-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
-        description: (
-          <>
-            <span className="font-semibold text-gray-900">{newKey}</span>
-            <span>{' = SUBSTR of '}</span>
-            <span className="font-semibold text-gray-900">{sourceKey}</span>
-            <span>{` ${rangeLabel}`}</span>
-          </>
-        ),
+        action: 'ADD',
+        section: formatSectionTitle(transformation.sectionId),
+        description: `${newKey ?? ''} = SUBSTR (${sourceKey ?? ''}, ${rangeLabel})`.trim(),
+        actionClassName: getActionClassName('ADD'),
       };
     }
     case TransformationType.DELETE: {
       const { attributeKey, attributePath } = transformation.params;
       const keyLabel = attributeKey || attributePath;
       return {
-        label: 'DELETE',
-        labelClassName: 'bg-red-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
-        description: (
-          <span className="font-semibold text-gray-900">{(keyLabel ?? '').trim() || '--'}</span>
-        ),
+        action: 'DELETE',
+        section: formatSectionTitle(transformation.sectionId),
+        description: (keyLabel ?? '').trim() || '--',
+        actionClassName: getActionClassName('DELETE'),
       };
     }
     case TransformationType.MASK: {
       const { attributeKey, maskStart, maskEnd } = transformation.params;
       const rangeLabel = formatRangeLabel(maskStart, maskEnd);
       return {
-        label: 'MASK',
-        labelClassName: 'bg-blue-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
-        description: (
-          <>
-            <span className="font-semibold text-gray-900">{attributeKey}</span>
-            <span>{` ${rangeLabel}`}</span>
-          </>
-        ),
+        action: 'MASK',
+        section: formatSectionTitle(transformation.sectionId),
+        description: `${attributeKey ?? ''} ${rangeLabel}`.trim(),
+        actionClassName: getActionClassName('MASK'),
       };
     }
     case TransformationType.RENAME_KEY: {
       const { oldKey, newKey } = transformation.params;
       return {
-        label: 'RENAME',
-        labelClassName: 'bg-indigo-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
-        description: (
-          <>
-            <span className="font-semibold text-gray-900">{oldKey}</span>
-            <span>{' → '}</span>
-            <span className="font-semibold text-gray-900">{newKey}</span>
-          </>
-        ),
+        action: 'RENAME',
+        section: formatSectionTitle(transformation.sectionId),
+        description: `${oldKey ?? ''} -> ${newKey ?? ''}`.trim(),
+        actionClassName: getActionClassName('RENAME'),
       };
     }
     case TransformationType.RAW_OTTL: {
       const { statement } = transformation.params;
       return {
-        label: 'OTTL',
-        labelClassName: 'bg-purple-600 text-white',
+        action: 'OTTL',
         description: statement,
         isRawOTTL: true,
+        actionClassName: getActionClassName('OTTL'),
       };
     }
     default:
       return {
-        label: 'STEP',
-        labelClassName: 'bg-gray-600 text-white',
-        section: formatSectionLabel(transformation.sectionId),
+        action: 'STEP',
+        section: formatSectionTitle(transformation.sectionId),
         description: '--',
+        actionClassName: getActionClassName('STEP'),
       };
+  }
+}
+
+function getActionClassName(action: string): string {
+  switch (action) {
+    case 'ADD':
+      return 'text-emerald-600';
+    case 'MOVE':
+      return 'text-amber-600';
+    case 'DELETE':
+      return 'text-rose-600';
+    case 'MASK':
+      return 'text-sky-600';
+    case 'RENAME':
+      return 'text-indigo-600';
+    case 'OTTL':
+      return 'text-purple-600';
+    default:
+      return 'text-gray-700';
   }
 }
 
@@ -903,21 +891,28 @@ function formatSectionLabel(sectionId: string): string {
   const normalized = baseId.replace(/-/g, ' ').trim().toLowerCase();
 
   const mappings: [RegExp, string][] = [
-    [/^resource(?:\s+attributes?)?/, 'Resource Attr'],
+    [/^resource(?:\s+attributes?)?/, 'Resource Attributes'],
     [/^span\s+info/, 'Span Info'],
-    [/^span\s+attributes?/, 'Span Attr'],
-    [/^scope\s+attributes?/, 'Scope Attr'],
+    [/^span\s+attributes?/, 'Span Attributes'],
+    [/^scope\s+attributes?/, 'Scope Attributes'],
     [/^scope\s+info/, 'Scope Info'],
-    [/^event\s+attributes?/, 'Event Attr'],
+    [/^event\s+attributes?/, 'Event Attributes'],
   ];
 
   for (const [pattern, label] of mappings) {
     if (pattern.test(normalized)) {
-      return label.toUpperCase();
+      return label;
     }
   }
 
-  return normalized.replace(/\b\w/g, (char) => char.toUpperCase()).toUpperCase();
+  return normalized
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatSectionTitle(sectionId: string): string {
+  return formatSectionLabel(sectionId);
 }
 
 function formatRangeLabel(start: number, end: number | 'end'): string {
@@ -928,4 +923,5 @@ function formatRangeLabel(start: number, end: number | 'end'): string {
   const endLabel = end === 'end' ? 'end' : end.toString();
   return `[${start}..${endLabel}]`;
 }
+
 
