@@ -1094,7 +1094,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         </div>
 
         {/* Modification label - always visible on the right */}
-        {!shouldShowMaskSelector && getModificationLabel()}
+        {getModificationLabel()}
 
         {/* Action buttons - positioned absolutely on the right */}
         {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && (
