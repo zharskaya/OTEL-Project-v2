@@ -17,7 +17,12 @@ import {
   useHighlightedTransformationIds,
   useTransformations,
 } from '@/lib/state/hooks';
-import { TransformationType, TransformationStatus, type AddStaticParams } from '@/types/transformation-types';
+import {
+  TransformationType,
+  TransformationStatus,
+  type AddStaticParams,
+  type DeleteParams,
+} from '@/types/transformation-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
 import { MaskValueSelector } from '@/components/transformations/mask-value-selector';
@@ -33,6 +38,20 @@ const formatRangeLabel = (
   const isEnd = end === 'end' || (typeof end === 'number' && fullLength !== undefined && end >= fullLength);
   const endLabel = isEnd ? 'end' : String(end);
   return `[${start}..${endLabel}]`;
+};
+
+const formatSectionDisplayName = (label?: string, id?: string): string | null => {
+  if (label && label.trim().length > 0) {
+    return label;
+  }
+  if (!id) {
+    return null;
+  }
+  return id
+    .replace(/\./g, ' › ')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 interface AttributeRowProps {
@@ -150,6 +169,19 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     isRenamed ||
     isAdded ||
     attribute.isRawOTTL;
+
+  const deleteParams = deleteTransformation?.params as DeleteParams | undefined;
+  const addStaticParams = isAddStatic && addTransformationRecord
+    ? (addTransformationRecord.params as AddStaticParams)
+    : undefined;
+
+  const movedToSectionLabel = isDeleted && deleteParams
+    ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
+    : null;
+
+  const movedFromSectionLabel = isAddStatic && addStaticParams
+    ? formatSectionDisplayName(addStaticParams.movedFromSectionLabel, addStaticParams.movedFromSectionId)
+    : null;
 
   const cancelHoverHide = () => {
     if (hoverHideTimeoutRef.current) {
@@ -955,7 +987,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 <TooltipTrigger asChild>
                   <div
                     ref={valueContainerRef}
-                    className={`inline-flex max-w-full leading-none focus:outline-none ${isValueInteractive ? 'cursor-pointer' : 'cursor-default'}`}
+            className={`inline-flex max-w-full flex-col leading-none focus:outline-none ${isValueInteractive ? 'cursor-pointer' : 'cursor-default'}`}
                     tabIndex={isValueInteractive ? 0 : -1}
                     onMouseEnter={handleValueMouseEnter}
                     onMouseLeave={handleValueMouseLeave}
@@ -979,8 +1011,15 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               </span>
             </span>
           ) : isDeleted ? (
-            <span ref={valueRef} className={`font-mono text-xs ${getTextClass()} leading-none`}>
-              {attribute.value}
+            <span ref={valueRef} className="flex flex-col gap-1 leading-none">
+              <span className={`font-mono text-xs ${getTextClass()} leading-none`}>
+                {attribute.value}
+              </span>
+              {movedToSectionLabel && movedKeys.has(attribute.key) && (
+                <span className="font-mono text-[10px] text-gray-500 leading-none">
+                  moved to {movedToSectionLabel}
+                </span>
+              )}
             </span>
           ) : attribute.modifications.some(m => m.type === 'add-substring') ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
@@ -1009,17 +1048,27 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 }
                 return null;
               })()}
+              {movedFromSectionLabel && (
+                <span className="font-mono text-[10px] text-gray-500 leading-none">
+                  moved from {movedFromSectionLabel}
+                </span>
+              )}
             </span>
           ) : (
             <span 
               ref={valueRef} 
-              className="leading-none"
+              className="flex flex-col gap-1 leading-none"
             >
               <SyntaxHighlighter
                 value={attribute.value}
                 valueType={attribute.valueType}
                 className={`font-mono text-xs ${getTextClass()} leading-none`}
               />
+              {movedFromSectionLabel && (
+                <span className="font-mono text-[10px] text-gray-500 leading-none">
+                  moved from {movedFromSectionLabel}
+                </span>
+              )}
             </span>
           )}
                   </div>

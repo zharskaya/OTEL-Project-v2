@@ -43,6 +43,9 @@ export interface AddStaticParams {
   key: string;
   value: string;
   insertionPoint: string;
+  movedFromSectionId?: string;
+  movedFromSectionLabel?: string;
+  movedFromPath?: string;
 }
 
 export interface AddSubstringParams {
@@ -60,6 +63,9 @@ export interface DeleteParams {
   attributePath: string;
   attributeKey: string;
   attributeValue?: string;
+  movedToSectionId?: string;
+  movedToSectionLabel?: string;
+  movedToPath?: string;
 }
 
 export interface MaskParams {

@@ -173,10 +173,16 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
             if ('insertionPoint' in updatedParams && destSection) {
               updatedParams.insertionPoint = destSection.id;
+              updatedParams.movedFromSectionId = activeInfo.sectionId;
+              updatedParams.movedFromSectionLabel = sourceSection?.label;
+              updatedParams.movedFromPath = draggedAttr.path;
             }
 
             if ('attributePath' in updatedParams) {
               updatedParams.attributePath = draggedAttr.path;
+              updatedParams.movedToSectionId = overInfo.sectionId;
+              updatedParams.movedToSectionLabel = destSection?.label;
+              updatedParams.movedToPath = draggedAttr.path;
             }
 
             updateTransformation(transformation.id, {
@@ -220,6 +226,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           type: TransformationType.DELETE,
           attributePath: draggedAttr.path,
           attributeKey: draggedKey,
+          movedToSectionId: overInfo.sectionId,
+          movedToSectionLabel: destSection?.label,
+          movedToPath: `${destSection?.id ?? overInfo.sectionId}.${draggedKey}`,
         },
       });
 
@@ -237,6 +246,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           insertionPoint: destSection.id,
           key: draggedKey,
           value: valueForAdd,
+          movedFromSectionId: activeInfo.sectionId,
+          movedFromSectionLabel: sourceSection?.label,
+          movedFromPath: draggedAttr.path,
         },
       });
 
