@@ -16,6 +16,7 @@ import {
   useTransformationHighlightActions,
   useHighlightedTransformationIds,
   useTransformations,
+  useActiveTransformationRange,
 } from '@/lib/state/hooks';
 import {
   TransformationType,
@@ -97,6 +98,27 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     useTransformationHighlightActions();
   const highlightedTransformationIds = useHighlightedTransformationIds();
   const transformations = useTransformations();
+  const activeRange = useActiveTransformationRange();
+  const transformationById = useMemo(
+    () => new Map(transformations.map((transformation) => [transformation.id, transformation])),
+    [transformations]
+  );
+  const isTransformationInActiveRange = (transformationId?: string | null): boolean => {
+    if (!transformationId) {
+      return true;
+    }
+    const transformation = transformationById.get(transformationId);
+    if (!transformation) {
+      return true;
+    }
+    const { start, end } = activeRange;
+    if (end <= start) {
+      return true;
+    }
+    return transformation.order >= start && transformation.order < end;
+  };
+  const getOpacityClassForTransformation = (transformationId?: string | null) =>
+    isTransformationInActiveRange(transformationId) ? '' : 'opacity-20';
 
   // Use sortable hook for draggable rows
   const {
@@ -599,9 +621,10 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const getModificationLabel = () => {
     if (isDeleted) {
       const text = movedKeys.has(attribute.key) ? 'MOVED OUT' : 'DELETE';
+      const deleteOpacityClass = getOpacityClassForTransformation(deleteTransformation?.id);
       return (
         <div className="flex flex-col items-end gap-1 text-right">
-          <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white`}>
+          <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white ${deleteOpacityClass}`}>
             {text}
           </span>
         </div>
@@ -632,16 +655,24 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       if (!modification) continue;
       const label = labelMap[type];
       if (!label) continue;
+      const badgeOpacityClass = getOpacityClassForTransformation(modification.transformationId);
       badges.push(
-        <span key={`badge-${type}`} className={`${BADGE_BASE_CLASS} ${label.color}`}>
+        <span
+          key={`badge-${type}`}
+          className={`${BADGE_BASE_CLASS} ${label.color} ${badgeOpacityClass}`}
+        >
           {label.text}
         </span>
       );
     }
 
     if (isRenamed) {
+      const renameOpacityClass = getOpacityClassForTransformation(renameTransformation?.id);
       badges.push(
-        <span key="badge-rename" className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white`}>
+        <span
+          key="badge-rename"
+          className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white ${renameOpacityClass}`}
+        >
           RENAME KEY
         </span>
       );
@@ -655,11 +686,15 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         params.maskEnd,
         rawValue.length
       );
-      badges.push(
-        <span key="badge-mask" className={`${BADGE_BASE_CLASS} bg-blue-600 text-white`}>
-          MASK {rangeLabel}
-        </span>
-      );
+    const maskOpacityClass = getOpacityClassForTransformation(maskTransformation.id);
+    badges.push(
+      <span
+        key="badge-mask"
+        className={`${BADGE_BASE_CLASS} bg-blue-600 text-white ${maskOpacityClass}`}
+      >
+        MASK {rangeLabel}
+      </span>
+    );
     }
 
     if (badges.length === 0) {

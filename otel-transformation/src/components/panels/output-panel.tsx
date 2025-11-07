@@ -23,7 +23,7 @@ export function OutputPanel({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between bg-white border-b border-gray-200 px-2 py-1 min-h-[44px]">
+      <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
         <div className="flex items-center gap-3">
           <h2 className="font-semibold text-xs text-gray-900">OUTPUT</h2>
         </div>
@@ -41,7 +41,7 @@ export function OutputPanel({
       </div>
 
       {/* Content */}
-      <div className="relative flex-1 overflow-auto bg-white">
+      <div className="relative flex-1 overflow-auto bg-white pb-12">
         {isEmpty ? (
           <div className="flex h-full items-center justify-center p-1">
             <p className="text-gray-500">

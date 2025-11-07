@@ -12,6 +12,10 @@ interface TransformationStore {
   lastExecutionResult: TransformationResult | null;
   attributeOrder: Map<string, string[]>; // sectionId -> ordered attribute KEYS (not IDs)
   hoveredTransformationIds: string[];
+  activeRange: {
+    start: number;
+    end: number;
+  };
 
   // Actions
   addTransformation: (transformation: Transformation) => void;
@@ -26,6 +30,7 @@ interface TransformationStore {
   setAttributeOrder: (sectionId: string, order: string[]) => void;
   setHoveredTransformationIds: (ids: string[]) => void;
   clearHoveredTransformationIds: () => void;
+  setActiveRange: (range: { start: number; end: number }) => void;
 
   // Selectors
   getTransformationsBySection: (sectionId: string) => Transformation[];
@@ -39,6 +44,10 @@ export const useTransformationStore = create<TransformationStore>(
     lastExecutionResult: null,
     attributeOrder: new Map(),
     hoveredTransformationIds: [],
+    activeRange: {
+      start: 0,
+      end: 0,
+    },
 
     addTransformation: (transformation) =>
       set((state) => {
@@ -94,6 +103,10 @@ export const useTransformationStore = create<TransformationStore>(
         transformations: [],
         lastExecutionResult: null,
         attributeOrder: new Map(),
+        activeRange: {
+          start: 0,
+          end: 0,
+        },
       }),
 
     setAttributeOrder: (sectionId, order) =>
@@ -108,6 +121,17 @@ export const useTransformationStore = create<TransformationStore>(
       set({ hoveredTransformationIds: Array.from(new Set(ids)) }),
 
     clearHoveredTransformationIds: () => set({ hoveredTransformationIds: [] }),
+
+    setActiveRange: (range) =>
+      set((state) => {
+        if (
+          state.activeRange.start === range.start &&
+          state.activeRange.end === range.end
+        ) {
+          return state;
+        }
+        return { activeRange: { start: range.start, end: range.end } };
+      }),
 
     getTransformationsBySection: (sectionId) => {
       return get().transformations.filter((t) => t.sectionId === sectionId);

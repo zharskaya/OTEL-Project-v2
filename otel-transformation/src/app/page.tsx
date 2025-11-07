@@ -63,7 +63,7 @@ export default function Home() {
   }, [handleRun]);
 
   return (
-    <main className="h-screen w-screen overflow-hidden pb-14">
+    <main className="h-screen w-screen overflow-hidden">
       <SplitPanel
         initialLeftWidth={outerSplitLeftWidth}
         leftPanel={

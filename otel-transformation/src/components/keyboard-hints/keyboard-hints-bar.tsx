@@ -14,7 +14,7 @@ export function KeyboardHintsBar() {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 py-2 shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white px-4 py-2">
       <div className="flex items-center gap-6">
         
         

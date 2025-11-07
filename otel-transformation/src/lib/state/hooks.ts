@@ -23,6 +23,7 @@ export function useTransformationActions() {
   const setAttributeOrder = useTransformationStore((state) => state.setAttributeOrder);
   const setHoveredTransformationIds = useTransformationStore((state) => state.setHoveredTransformationIds);
   const clearHoveredTransformationIds = useTransformationStore((state) => state.clearHoveredTransformationIds);
+  const setActiveRange = useTransformationStore((state) => state.setActiveRange);
 
   return useMemo(
     () => ({
@@ -35,6 +36,7 @@ export function useTransformationActions() {
       setAttributeOrder,
       setHoveredTransformationIds,
       clearHoveredTransformationIds,
+      setActiveRange,
     }),
     [
       addTransformation,
@@ -46,6 +48,7 @@ export function useTransformationActions() {
       setAttributeOrder,
       setHoveredTransformationIds,
       clearHoveredTransformationIds,
+      setActiveRange,
     ]
   );
 }
@@ -89,4 +92,8 @@ export function useUpdateCount(sectionId: string) {
 
 export function useAttributeOrder() {
   return useTransformationStore((state) => state.attributeOrder);
+}
+
+export function useActiveTransformationRange() {
+  return useTransformationStore((state) => state.activeRange);
 }

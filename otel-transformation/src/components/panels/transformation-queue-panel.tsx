@@ -66,6 +66,25 @@ function countTransformationsBeforeIndex(
   return count;
 }
 
+function normalizeRange(
+  start: number,
+  end: number,
+  transformationCount: number
+): { start: number; end: number } {
+  if (transformationCount <= 0) {
+    return { start: 0, end: 0 };
+  }
+
+  const clampedStart = Math.max(0, Math.min(start, transformationCount - 1));
+  let clampedEnd = Math.max(clampedStart + 1, end);
+  clampedEnd = Math.min(clampedEnd, transformationCount);
+
+  return {
+    start: clampedStart,
+    end: clampedEnd,
+  };
+}
+
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
 }
@@ -74,7 +93,7 @@ export function TransformationQueuePanel({
   sections,
 }: TransformationQueuePanelProps) {
   const transformations = useTransformations();
-  const { removeTransformation, reorderTransformations } = useTransformationActions();
+  const { removeTransformation, reorderTransformations, setActiveRange } = useTransformationActions();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
   const [rawOttlEditor, setRawOttlEditor] = useState<{
@@ -114,6 +133,11 @@ export function TransformationQueuePanel({
   }));
 
   const transformationCount = displayTransformations.length;
+  const transformationIndexMap = useMemo(
+    () =>
+      new Map(displayTransformations.map((item, index) => [item.id, index])),
+    [displayTransformations]
+  );
   const previousTransformationCountRef = useRef(transformationCount);
   const previousTransformationIdsRef = useRef<string[]>([]);
   const previousBoundarySlotsRef = useRef(boundarySlots);
@@ -186,6 +210,13 @@ export function TransformationQueuePanel({
 
     previousTransformationCountRef.current = transformationCount;
   }, [transformationCount]);
+
+  useLayoutEffect(() => {
+    setActiveRange({
+      start: boundarySlots.start,
+      end: boundarySlots.end,
+    });
+  }, [boundarySlots, setActiveRange]);
 
   useLayoutEffect(() => {
     const currentIds = displayTransformations.map((item) => item.id);
@@ -387,6 +418,10 @@ export function TransformationQueuePanel({
       const activeId = String(active.id);
       const overId = String(over.id);
 
+      const sourceIndex = orderedTransformations.findIndex(
+        (item) => item.id === activeId
+      );
+
       if (activeId === START_MARKER_ID) {
         handleStartMarkerDrop(overId);
         setActiveId(null);
@@ -407,9 +442,28 @@ export function TransformationQueuePanel({
         return;
       }
 
-      const destinationIndex = orderedTransformations.findIndex(
-        (item) => item.id === overId
-      );
+      if (sourceIndex === -1) {
+        setActiveId(null);
+        setDropIndicatorId(null);
+        return;
+      }
+
+      const droppedOnStartMarker = overId === START_MARKER_ID;
+      const droppedOnEndMarker = overId === END_MARKER_ID;
+
+      let destinationIndex: number;
+
+      if (droppedOnStartMarker) {
+        destinationIndex =
+          boundarySlots.start > 0 ? boundarySlots.start - 1 : 0;
+      } else if (droppedOnEndMarker) {
+        const lastIndex = Math.max(orderedTransformations.length - 1, 0);
+        destinationIndex = Math.min(boundarySlots.end, lastIndex);
+      } else {
+        destinationIndex = orderedTransformations.findIndex(
+          (item) => item.id === overId
+        );
+      }
 
       if (destinationIndex === -1) {
         setActiveId(null);
@@ -417,11 +471,71 @@ export function TransformationQueuePanel({
         return;
       }
 
-      reorderTransformations(String(active.id), destinationIndex);
+      const safeDestinationIndex = Math.max(
+        0,
+        Math.min(destinationIndex, Math.max(orderedTransformations.length - 1, 0))
+      );
+
+      const orderedIds = orderedTransformations.map((item) => item.id);
+      const updatedOrderIds =
+        orderedIds.length === 0
+          ? orderedIds
+          : arrayMove(orderedIds, sourceIndex, safeDestinationIndex);
+      const destinationIndexAfterMove =
+        updatedOrderIds.length === 0
+          ? 0
+          : updatedOrderIds.indexOf(activeId);
+
+      const sourceInside =
+        sourceIndex >= boundarySlots.start &&
+        sourceIndex < boundarySlots.end;
+      const destinationInside =
+        destinationIndexAfterMove >= boundarySlots.start &&
+        destinationIndexAfterMove < boundarySlots.end;
+
+      if (
+        sourceInside &&
+        !destinationInside &&
+        boundarySlots.end - boundarySlots.start <= 1
+      ) {
+        setActiveId(null);
+        setDropIndicatorId(null);
+        return;
+      }
+
+      let nextStart = boundarySlots.start;
+      let nextEnd = boundarySlots.end;
+
+      if (!sourceInside && destinationInside) {
+        nextEnd += 1;
+      } else if (sourceInside && !destinationInside) {
+        nextEnd -= 1;
+      }
+
+      const normalizedRange = normalizeRange(
+        nextStart,
+        nextEnd,
+        transformationCount
+      );
+
+      setBoundarySlots(normalizedRange);
+
+      reorderTransformations(String(active.id), safeDestinationIndex);
+
       setActiveId(null);
       setDropIndicatorId(null);
     },
-    [orderedTransformations, reorderTransformations, handleStartMarkerDrop, handleEndMarkerDrop, START_MARKER_ID, END_MARKER_ID]
+    [
+      orderedTransformations,
+      reorderTransformations,
+      handleStartMarkerDrop,
+      handleEndMarkerDrop,
+      START_MARKER_ID,
+      END_MARKER_ID,
+      boundarySlots,
+      setBoundarySlots,
+      transformationCount,
+    ]
   );
 
   const handleDragCancel = useCallback((_: DragCancelEvent) => {
@@ -431,7 +545,7 @@ export function TransformationQueuePanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between bg-white border-b border-gray-200 px-2 py-1 min-h-[44px]">
+      <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
         <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>
@@ -508,6 +622,11 @@ export function TransformationQueuePanel({
                       return null;
                     }
 
+                    const transformationIndex =
+                      transformationIndexMap.get(transformation.id) ?? -1;
+                    const isWithinRange =
+                      transformationIndex >= boundarySlots.start &&
+                      transformationIndex < boundarySlots.end;
                     if (
                       rawOttlEditor?.mode === 'edit' &&
                       rawOttlEditor.transformationId === transformation.id
@@ -533,6 +652,7 @@ export function TransformationQueuePanel({
                         showDropIndicator={
                           dropIndicatorId === transformation.id && transformation.id !== activeId
                         }
+                        isWithinRange={isWithinRange}
                         onEditRawOttl={(rawTransformation) => {
                           const params = rawTransformation.params as RawOTTLParams;
                           setRawOttlEditor({
@@ -568,9 +688,16 @@ interface QueueItemProps {
   onRemove: (id: string) => void;
   showDropIndicator: boolean;
   onEditRawOttl?: (transformation: Transformation) => void;
+  isWithinRange: boolean;
 }
 
-function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl }: QueueItemProps) {
+function QueueItem({
+  transformation,
+  onRemove,
+  showDropIndicator,
+  onEditRawOttl,
+  isWithinRange,
+}: QueueItemProps) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
     useSortable({ id: transformation.id });
   const [isHovered, setIsHovered] = useState(false);
@@ -590,6 +717,13 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
   const descriptionContent = details.description;
   const actionClassName = details.actionClassName;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
+  const labelOpacityClass = isWithinRange ? '' : 'opacity-20';
+  const baseBackgroundClass = isHighlighted
+    ? 'bg-gray-300'
+    : isWithinRange
+      ? 'bg-gray-200/60'
+      : 'bg-gray-100';
+  const dragStateClass = isDragging ? 'shadow-sm ring-1 ring-gray-200' : '';
 
   const showActions = isHovered || isFocused;
   const isRawOttlTransformation = transformation.type === TransformationType.RAW_OTTL;
@@ -605,11 +739,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${
-        isHighlighted ? 'bg-gray-300' : 'bg-gray-100'
-      } ${
-        isDragging ? 'bg-gray-100 shadow-sm ring-1 ring-gray-200' : ''
-      }`}
+      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass} ${dragStateClass}`}
       onMouseEnter={() => {
         setIsHovered(true);
         setHoveredTransformationIds([transformation.id]);
@@ -669,7 +799,7 @@ function QueueItem({ transformation, onRemove, showDropIndicator, onEditRawOttl 
         ) : (
           <div className="flex min-w-0 flex-1 items-start gap-3">
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName}`}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName} ${labelOpacityClass}`}
             >
               {labelText}
             </span>
@@ -751,17 +881,17 @@ function QueueBoundaryMarker({ id, label }: QueueBoundaryMarkerProps) {
         isDragging ? 'bg-gray-200' : ''
       }`}
     >
-      <span className="h-0.5 w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
+      <span className="h-[1px] w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
       <button
         type="button"
-        className="flex items-center justify-center whitespace-nowrap rounded px-1 py-0.5 uppercase text-gray-600 cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 hover:bg-blue-500 hover:text-white"
+        className="flex items-center justify-center whitespace-nowrap rounded px-1 py-0.5 uppercase text-gray-900 bg:bg-gray-400 cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 group-hover:bg-blue-500 group-hover:text-white"
         aria-label={`${label} boundary`}
         {...attributes}
         {...listeners}
       >
         {label}
       </button>
-      <span className="h-0.5 w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
+      <span className="h-[1px] w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
     </div>
   );
 }
@@ -926,12 +1056,12 @@ function formatSectionLabel(sectionId: string): string {
   const normalized = baseId.replace(/-/g, ' ').trim().toLowerCase();
 
   const mappings: [RegExp, string][] = [
-    [/^resource(?:\s+attributes?)?/, 'Resource Attributes'],
+    [/^resource(?:\s+attributes?)?/, 'Resource Attribute'],
     [/^span\s+info/, 'Span Info'],
-    [/^span\s+attributes?/, 'Span Attributes'],
-    [/^scope\s+attributes?/, 'Scope Attributes'],
+    [/^span\s+attributes?/, 'Span Attribute'],
+    [/^scope\s+attributes?/, 'Scope Attribute'],
     [/^scope\s+info/, 'Scope Info'],
-    [/^event\s+attributes?/, 'Event Attributes'],
+    [/^event\s+attributes?/, 'Event Attribute'],
   ];
 
   for (const [pattern, label] of mappings) {
