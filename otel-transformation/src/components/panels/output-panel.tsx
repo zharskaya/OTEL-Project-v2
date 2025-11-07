@@ -43,11 +43,12 @@ export function OutputPanel({
       {/* Content */}
       <div className="relative flex-1 overflow-auto bg-white pb-12">
         {isEmpty ? (
-          <div className="flex h-full items-center justify-center p-1">
-            <p className="text-gray-500">
-               Click Preview or press (⌘ / Ctrl + Enter) to view the output
-            </p>
-          </div>
+          <div className="p-4 text-center text-sm text-gray-500">
+          <p>
+               Click Preview or press (⌘/Ctrl + Enter) to view the output
+          </p>
+        </div>
+          
         ) : (
               <>
                 {/* Info message when changes are made */}

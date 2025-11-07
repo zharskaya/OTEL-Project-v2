@@ -346,17 +346,24 @@ export function TransformationQueuePanel({
       );
 
       setBoundarySlots((current) => {
-        const maxStart = Math.min(transformationCount - 1, current.end - 1);
-        const nextStart = Math.max(0, Math.min(transformationsBefore, maxStart));
+        const desiredStart = Math.max(
+          0,
+          Math.min(transformationsBefore, transformationCount - 1)
+        );
+        const normalized = normalizeRange(
+          desiredStart,
+          current.end,
+          transformationCount
+        );
 
-        if (nextStart === current.start) {
+        if (
+          normalized.start === current.start &&
+          normalized.end === current.end
+        ) {
           return current;
         }
 
-        return {
-          start: nextStart,
-          end: current.end,
-        };
+        return normalized;
       });
     },
     [setBoundarySlots, sortableItems, transformationCount]
@@ -390,17 +397,24 @@ export function TransformationQueuePanel({
       );
 
       setBoundarySlots((current) => {
-        const minEnd = Math.max(current.start + 1, 1);
-        const nextEnd = Math.max(minEnd, Math.min(transformationsBefore, transformationCount));
+        const desiredEnd = Math.max(
+          0,
+          Math.min(transformationsBefore, transformationCount)
+        );
+        const normalized = normalizeRange(
+          current.start,
+          desiredEnd,
+          transformationCount
+        );
 
-        if (nextEnd === current.end) {
+        if (
+          normalized.start === current.start &&
+          normalized.end === current.end
+        ) {
           return current;
         }
 
-        return {
-          start: current.start,
-          end: nextEnd,
-        };
+        return normalized;
       });
     },
     [setBoundarySlots, sortableItems, transformationCount]
@@ -506,10 +520,24 @@ export function TransformationQueuePanel({
       let nextStart = boundarySlots.start;
       let nextEnd = boundarySlots.end;
 
-      if (!sourceInside && destinationInside) {
-        nextEnd += 1;
-      } else if (sourceInside && !destinationInside) {
-        nextEnd -= 1;
+      const enteringRange = !sourceInside && destinationInside;
+      const leavingRange = sourceInside && !destinationInside;
+      const movedAboveStart = leavingRange && destinationIndexAfterMove < boundarySlots.start;
+
+      if (enteringRange) {
+        if (nextEnd < transformationCount) {
+          nextEnd += 1;
+        } else if (nextStart > 0) {
+          nextStart -= 1;
+        }
+      }
+
+      if (leavingRange) {
+        if (movedAboveStart) {
+          nextStart += 1;
+        } else {
+          nextEnd -= 1;
+        }
       }
 
       const normalizedRange = normalizeRange(
@@ -593,8 +621,9 @@ export function TransformationQueuePanel({
                   </div>
                 )}
                 {displayTransformations.length === 0 && !rawOttlEditor ? (
-                  <div className="p-1 text-center text-sm text-gray-500">
-                    No transformations yet. Add one from the telemetry tree to build a queue.
+                  <div className="p-4 text-center text-sm text-gray-500">
+                    <p className="font-semibold pb-1">No transformations yet.</p>
+                    <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
                   </div>
                 ) : (
                   sortableItems.map((itemId) => {
