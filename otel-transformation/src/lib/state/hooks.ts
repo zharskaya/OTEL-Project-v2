@@ -1,5 +1,6 @@
 import { useTransformationStore } from './transformation-store';
 import { useMemo } from 'react';
+import { TransformationType } from '@/types/transformation-types';
 
 /**
  * Custom hooks for accessing transformation store state
@@ -76,7 +77,12 @@ export function useUpdateCount(sectionId: string) {
   const allTransformations = useTransformationStore((state) => state.transformations);
 
   return useMemo(
-    () => allTransformations.filter((t) => t.sectionId === sectionId).length,
+    () =>
+      allTransformations.filter(
+        (transformation) =>
+          transformation.sectionId === sectionId &&
+          transformation.type !== TransformationType.RAW_OTTL
+      ).length,
     [allTransformations, sectionId]
   );
 }
