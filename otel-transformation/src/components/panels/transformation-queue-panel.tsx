@@ -483,7 +483,7 @@ function QueueItem({
   const baseBackgroundClass = isHighlighted
     ? 'bg-gray-300/60'
     : isVisible
-      ? 'bg-gray-200/60'
+      ? 'bg-gray-50'
       : 'bg-white';
   const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
   const labelOpacityClass = isVisible ? '' : 'opacity-30';
@@ -566,7 +566,7 @@ function QueueItem({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-                <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-500' : 'text-gray-400/80'}`}>
+              <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-600' : 'text-gray-400'}`}>
                   {sectionText}
                 </span>
               ) : null}
@@ -707,7 +707,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
           section: destinationLabel,
           description: (
             <>
-              <span className="text-gray-900">{params.key ?? ''}</span>
+              <span className="text-gray-400">{params.key ?? ''}</span>
               {` → [${destinationLabel}]`}
             </>
           ),
@@ -721,7 +721,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-900">{params.key ?? ''}</span>
+            <span className="text-gray-400">{params.key ?? ''}</span>
             {` = ${valueText}`}
           </>
         ),
@@ -741,9 +741,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-900">{newKey ?? ''}</span>
+            <span className="text-gray-400">{newKey ?? ''}</span>
             {` = SUBSTR (`}
-            <span className="text-gray-900">{sourceKey ?? ''}</span>
+            <span className="text-gray-400">{sourceKey ?? ''}</span>
             {`, ${rangeLabel})`}
           </>
         ),
@@ -757,7 +757,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         action: 'DELETE',
         section: formatSectionTitle(transformation.sectionId),
         description: (
-          <span className="text-gray-900">{(keyLabel ?? '').trim() || '--'}</span>
+          <span className="text-gray-400">{(keyLabel ?? '').trim() || '--'}</span>
         ),
         actionClassName: getActionClassName('DELETE'),
       };
@@ -770,7 +770,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-900">{attributeKey ?? ''}</span>
+            <span className="text-gray-400">{attributeKey ?? ''}</span>
             {` ${rangeLabel}`}
           </>
         ),
@@ -784,9 +784,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-900">{oldKey ?? ''}</span>
+            <span className="text-gray-400">{oldKey ?? ''}</span>
             {' → '}
-            <span className="text-gray-900">{newKey ?? ''}</span>
+            <span className="text-gray-400">{newKey ?? ''}</span>
           </>
         ),
         actionClassName: getActionClassName('RENAME'),
@@ -854,12 +854,12 @@ function formatSectionLabel(sectionId: string): string {
   const normalized = baseId.replace(/-/g, ' ').trim().toLowerCase();
 
   const mappings: [RegExp, string][] = [
-    [/^resource(?:\s+attributes?)?/, 'Resource Attribute'],
+    [/^resource(?:\s+attributes?)?/, 'Resource Attr'],
     [/^span\s+info/, 'Span Info'],
-    [/^span\s+attributes?/, 'Span Attribute'],
-    [/^scope\s+attributes?/, 'Scope Attribute'],
+    [/^span\s+attributes?/, 'Span Attr'],
+    [/^scope\s+attributes?/, 'Scope Attr'],
     [/^scope\s+info/, 'Scope Info'],
-    [/^event\s+attributes?/, 'Event Attribute'],
+    [/^event\s+attributes?/, 'Event Attr'],
   ];
 
   for (const [pattern, label] of mappings) {

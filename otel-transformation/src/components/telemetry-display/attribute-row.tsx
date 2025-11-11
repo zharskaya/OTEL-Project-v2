@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
-import { Trash2, Undo2, GripVertical, SquareTerminal, Check, X, TextSelect, KeyRound, PenLine } from 'lucide-react';
+import { Trash2, Undo2, GripVertical, SquareTerminal, Check, X, TextSelect, Wrench, PenLine } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DisplayAttribute, ValueType } from '@/types/telemetry-types';
@@ -1407,7 +1407,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                       className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
                       aria-label="Rename key"
                     >
-                      <KeyRound className="h-4 w-4" />
+                      <Wrench className="h-4 w-4" />
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
