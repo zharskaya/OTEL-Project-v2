@@ -224,7 +224,7 @@ export function RenameKeyForm({
       <button
         onMouseDown={(e) => e.preventDefault()} // Prevent blur
         onClick={handleSave}
-        className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+        className="relative z-10 rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
         title="Save (Enter)"
         aria-label="Save (Enter)"
       >
@@ -233,7 +233,7 @@ export function RenameKeyForm({
       <button
         onMouseDown={(e) => e.preventDefault()} // Prevent blur
         onClick={onCancel}
-        className="rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+        className="relative z-10 rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
         title="Cancel (Esc)"
         aria-label="Cancel (Esc)"
       >
