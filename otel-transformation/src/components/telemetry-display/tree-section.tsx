@@ -237,13 +237,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       .filter((a): a is DisplayAttribute => a !== undefined);
   }, [baseAttributes, visualOrder]);
 
-  // Get all deleted attribute paths for this section
-  const deletedAttributePaths = new Set(
-    transformations
-      .filter(t => t.type === 'delete' && t.sectionId === section.id)
-      .map(t => (t.params as any).attributePath)
-  );
-
   // Create sortable items list - all attributes except deleted ones get composite IDs
   const sortableItems = allAttributes.map(attr => `${section.id}:${attr.id}`);
 
@@ -316,7 +309,6 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                 <div>
                   {allAttributes.map((attribute, index) => {
                     const compositeId = `${section.id}:${attribute.id}`;
-                    const isDeleted = deletedAttributePaths.has(attribute.path);
                     const isPendingDeletion = pendingDeletionId === compositeId;
                     
                     return (
@@ -339,7 +331,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                           onRequestSubstring={handleRequestSubstring}
                           isDraggable={true} // All attributes are draggable
                           showDropIndicator={dropIndicatorId === compositeId}
-                          forceDeleted={isPendingDeletion || isDeleted}
+                          forceDeleted={isPendingDeletion}
                           movedKeys={movedKeys}
                         />
                       </React.Fragment>

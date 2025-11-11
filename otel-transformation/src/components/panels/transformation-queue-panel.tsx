@@ -11,6 +11,7 @@ import {
 import {
   DndContext,
   type DragEndEvent,
+  type DragOverEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -43,14 +44,7 @@ import {
   type AddStaticParams,
   type DeleteParams,
 } from '@/types/transformation-types';
-import {
-  Trash2,
-  SquareTerminal,
-  PenLine,
-  Eye,
-  EyeOff,
-  GripVertical,
-} from 'lucide-react';
+import { Trash2, SquareTerminal, PenLine, GripVertical } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
 
@@ -66,6 +60,7 @@ export function TransformationQueuePanel({
   isPreviewDisabled = false,
 }: TransformationQueuePanelProps) {
   const [isHydrated, setIsHydrated] = useState(false);
+  const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
   const transformations = useTransformations();
   const {
     removeTransformation,
@@ -131,6 +126,7 @@ export function TransformationQueuePanel({
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      setDropIndicatorId(null);
       const { active, over } = event;
       if (!over || active.id === over.id) {
         return;
@@ -156,6 +152,11 @@ export function TransformationQueuePanel({
     [orderedTransformations, reorderTransformations]
   );
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { over } = event;
+    setDropIndicatorId(over ? (over.id as string) : null);
+  }, []);
+
   const handleAddRawOttl = useCallback(() => {
     if (!defaultSectionId) {
       return;
@@ -179,32 +180,6 @@ export function TransformationQueuePanel({
   const handleRawOttlSave = useCallback((_id: string, _statement: string) => {
     setRawOttlEditor(null);
   }, []);
-
-  const handleToggleVisibility = useCallback(
-    (transformation: Transformation) => {
-      const nextStatus =
-        transformation.status === TransformationStatus.ACTIVE
-          ? TransformationStatus.DRAFT
-          : TransformationStatus.ACTIVE;
-
-      updateTransformation(transformation.id, { status: nextStatus });
-
-      if (!transformation.pairedTransformationId) {
-        return;
-      }
-
-      const pairedTransformation = transformations.find(
-        (candidate) =>
-          candidate.id !== transformation.id &&
-          candidate.pairedTransformationId === transformation.pairedTransformationId
-      );
-
-      if (pairedTransformation && pairedTransformation.status !== nextStatus) {
-        updateTransformation(pairedTransformation.id, { status: nextStatus });
-      }
-    },
-    [transformations, updateTransformation]
-  );
 
   useEffect(() => {
     setIsHydrated(true);
@@ -326,7 +301,7 @@ export function TransformationQueuePanel({
                     <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
                   </div>
                 ) : (
-              <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+              <DndContext sensors={sensors} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
                 <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                   {displayTransformations.map((transformation) => {
                     if (
@@ -351,8 +326,8 @@ export function TransformationQueuePanel({
                       <QueueItem
                         key={transformation.id}
                         transformation={transformation}
+                        showDropIndicator={dropIndicatorId === transformation.id}
                         onRemove={removeTransformation}
-                        onToggleVisibility={handleToggleVisibility}
                         onEditRawOttl={(rawTransformation) => {
                           const params = rawTransformation.params as RawOTTLParams;
                           setRawOttlEditor({
@@ -386,14 +361,20 @@ interface RowDetails {
 interface QueueItemProps {
   transformation: Transformation;
   onRemove: (id: string) => void;
-  onToggleVisibility: (transformation: Transformation) => void;
+  onEditRawOttl?: (transformation: Transformation) => void;
+}
+
+interface QueueItemProps {
+  transformation: Transformation;
+  showDropIndicator: boolean;
+  onRemove: (id: string) => void;
   onEditRawOttl?: (transformation: Transformation) => void;
 }
 
 function QueueItem({
   transformation,
+  showDropIndicator,
   onRemove,
-  onToggleVisibility,
   onEditRawOttl,
 }: QueueItemProps) {
   const {
@@ -416,14 +397,8 @@ function QueueItem({
   const descriptionContent = details.description;
   const actionClassName = details.actionClassName;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
-  const isVisible = transformation.status === TransformationStatus.ACTIVE;
-  const labelOpacityClass = isVisible ? '' : 'opacity-40';
-  const baseBackgroundClass = isHighlighted
-    ? 'bg-gray-300'
-    : isVisible
-      ? 'bg-gray-200/60'
-      : 'bg-white';
-  const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
+  const baseBackgroundClass = isHighlighted ? 'bg-gray-300' : 'bg-gray-200/60';
+  const textColorClass = 'text-gray-600';
   const dragStateClass = isDragging ? 'shadow-md ring-1 ring-blue-200/60' : '';
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -433,10 +408,6 @@ function QueueItem({
   const showActions = isHovered || isFocused || isDragging;
   const isRawOttlTransformation = transformation.type === TransformationType.RAW_OTTL;
 
-  const handleToggleVisibility = () => {
-    onToggleVisibility(transformation);
-  };
-
   const handleEditRawOttl = () => {
     if (!isRawOttlTransformation || !onEditRawOttl) {
       return;
@@ -445,7 +416,9 @@ function QueueItem({
   };
 
   return (
-    <div
+    <>
+      {showDropIndicator ? <div className="mx-2 h-0.5 rounded bg-blue-500" /> : null}
+      <div
       ref={setNodeRef}
       style={style}
       {...attributes}
@@ -484,7 +457,7 @@ function QueueItem({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className={`font-mono break-words text-left ${isVisible ? 'text-gray-800' : 'text-gray-500'} cursor-pointer`}
+                    className="font-mono break-words text-left text-gray-800 cursor-pointer"
                     onClick={handleEditRawOttl}
                   >
                     {descriptionContent}
@@ -498,14 +471,12 @@ function QueueItem({
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName} ${labelOpacityClass}`}
-            >
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName}`}>
               {labelText}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-                <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-500' : 'text-gray-400/80'}`}>
+                <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {sectionText}
                 </span>
               ) : null}
@@ -521,27 +492,6 @@ function QueueItem({
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleToggleVisibility}
-                className={`rounded-md p-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  isVisible
-                    ? 'bg-gray-900 text-white hover:bg-gray-700'
-                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
-                }`}
-                aria-label={isVisible ? 'Hide transformation' : 'Show transformation'}
-              >
-                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{isVisible ? 'Hide transformation' : 'Show transformation'}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
         {isRawOttlTransformation && onEditRawOttl && (
           <TooltipProvider>
             <Tooltip>
@@ -580,6 +530,7 @@ function QueueItem({
         </TooltipProvider>
       </div>
     </div>
+    </>
   );
 }
 

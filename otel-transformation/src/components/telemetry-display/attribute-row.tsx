@@ -24,6 +24,7 @@ import {
   type AddStaticParams,
   type DeleteParams,
   type RenameKeyParams,
+  type Transformation,
 } from '@/types/transformation-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
@@ -124,6 +125,15 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     () => new Map(transformations.map((transformation) => [transformation.id, transformation])),
     [transformations]
   );
+  const getTransformationStatusById = (transformationId?: string | null): TransformationStatus | null => {
+    if (!transformationId) {
+      return null;
+    }
+    const transformation = transformationById.get(transformationId);
+    return transformation?.status ?? null;
+  };
+  const isTransformationActiveById = (transformationId?: string | null): boolean =>
+    getTransformationStatusById(transformationId) === TransformationStatus.ACTIVE;
   const isTransformationInActiveRange = (transformationId?: string | null): boolean => {
     if (!transformationId) {
       return true;
@@ -138,8 +148,38 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
     return transformation.order >= start && transformation.order < end;
   };
-  const getOpacityClassForTransformation = (transformationId?: string | null) =>
-    isTransformationInActiveRange(transformationId) ? '' : 'opacity-20';
+  const getOpacityClassForTransformation = (_transformationId?: string | null) => '';
+  const getTransformationAttributePath = (transformation: Transformation): string | undefined => {
+    const params = transformation.params as unknown as { [key: string]: unknown };
+    const attributePath = params['attributePath'];
+    if (typeof attributePath === 'string') {
+      return attributePath;
+    }
+    const movedToPath = params['movedToPath'];
+    if (typeof movedToPath === 'string') {
+      return movedToPath;
+    }
+    const movedFromPath = params['movedFromPath'];
+    if (typeof movedFromPath === 'string') {
+      return movedFromPath;
+    }
+    return undefined;
+  };
+  const activeModifications = attribute.modifications.filter((modification) => {
+    const status = getTransformationStatusById(modification.transformationId);
+    if (status === TransformationStatus.ACTIVE) {
+      return true;
+    }
+    switch (modification.type) {
+      case 'delete':
+      case 'mask':
+      case 'rename-key':
+        return true;
+      default:
+        return false;
+    }
+  });
+  const activeModificationTypes = new Set(activeModifications.map((modification) => modification.type));
 
   // Use sortable hook for draggable rows
   const {
@@ -161,7 +201,6 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const deleteTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.DELETE &&
-      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).attributeKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
@@ -170,7 +209,6 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const maskTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.MASK &&
-      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).attributeKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
@@ -179,29 +217,43 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const renameTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.RENAME_KEY &&
-      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).oldKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
 
-  const isDeleted = forceDeleted || !!deleteTransformation;
-  const isMasked = !!maskTransformation;
-  const isRenamed = !!renameTransformation;
-  const isAdded = attribute.modifications.some(m => 
-    m.type === 'add-static' || m.type === 'add-substring' || m.type === 'raw-ottl'
+  const isDeleteActive = deleteTransformation?.status === TransformationStatus.ACTIVE;
+  const isMaskActive = maskTransformation?.status === TransformationStatus.ACTIVE;
+  const isRenameActive = renameTransformation?.status === TransformationStatus.ACTIVE;
+
+  const isDeleted = forceDeleted || Boolean(isDeleteActive);
+  const isMasked = Boolean(isMaskActive);
+  const isRenamed = Boolean(isRenameActive);
+  const isAdded =
+    activeModificationTypes.has('add') ||
+    activeModificationTypes.has('add-static') ||
+    activeModificationTypes.has('add-substring') ||
+    activeModificationTypes.has('raw-ottl');
+  const addTransformationRecord = isAdded
+    ? transformations.find(
+        (transformation) =>
+          (transformation.type === TransformationType.ADD_STATIC ||
+            transformation.type === TransformationType.ADD_SUBSTRING ||
+            transformation.type === TransformationType.RAW_OTTL) &&
+          attribute.modifications.some(
+            (modification) => modification.transformationId === transformation.id
+          )
+      )
+    : null;
+  const isAddTransformationActive =
+    addTransformationRecord?.status === TransformationStatus.ACTIVE;
+  const isAddStatic =
+    Boolean(isAddTransformationActive) &&
+    (activeModificationTypes.has('add') || activeModificationTypes.has('add-static'));
+  const isAddSubstring =
+    Boolean(isAddTransformationActive) && activeModificationTypes.has('add-substring');
+  const hasUndoableTransformation = Boolean(
+    renameTransformation || maskTransformation || addTransformationRecord || deleteTransformation
   );
-  const hasAddStaticModification = attribute.modifications.some((modification) => modification.type === 'add-static');
-  const hasAddSubstringModification = attribute.modifications.some((modification) => modification.type === 'add-substring');
-  const isAddStatic = isAdded && hasAddStaticModification;
-  const isAddSubstring = isAdded && hasAddSubstringModification;
-  const addTransformationRecord = isAdded ? 
-    transformations.find(t => 
-      (t.type === TransformationType.ADD_STATIC || 
-       t.type === TransformationType.ADD_SUBSTRING ||
-       t.type === TransformationType.RAW_OTTL) &&
-      t.status === TransformationStatus.ACTIVE &&
-      attribute.modifications.some(m => m.transformationId === t.id)
-    ) : null;
   const addStaticInitialInput = useMemo(() => {
     if (!isAddStatic || !addTransformationRecord) {
       return '';
@@ -211,11 +263,10 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     return `${params.key}=${value}`;
   }, [isAddStatic, addTransformationRecord]);
   const hasAnyModification =
-    attribute.modifications.length > 0 ||
     isDeleted ||
     isMasked ||
     isRenamed ||
-    isAdded ||
+    activeModifications.length > 0 ||
     attribute.isRawOTTL;
 
   const deleteParams = deleteTransformation?.params as DeleteParams | undefined;
@@ -226,7 +277,31 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     ? (renameTransformation.params as RenameKeyParams)
     : undefined;
 
-  const movedToSectionLabel = isDeleted && deleteParams
+  const movePairId =
+    deleteTransformation?.pairedTransformationId ??
+    addTransformationRecord?.pairedTransformationId ??
+    null;
+  const moveTransformations =
+    movePairId != null
+      ? transformations.filter(
+          (transformation) => transformation.pairedTransformationId === movePairId
+        )
+      : [];
+  const moveTransformationIds = new Set(moveTransformations.map((transformation) => transformation.id));
+  const movedInAttributePath = deleteParams?.movedToPath;
+  const additionalTransformationsOnMovedIn =
+    movedInAttributePath != null
+      ? transformations.filter((transformation) => {
+          if (moveTransformationIds.has(transformation.id)) {
+            return false;
+          }
+          return getTransformationAttributePath(transformation) === movedInAttributePath;
+        })
+      : [];
+
+  const isMovedOut = Boolean(deleteParams?.movedToSectionId);
+
+  const movedToSectionLabel = isMovedOut && deleteParams
     ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
     : null;
 
@@ -327,6 +402,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   const handleUndo = () => {
     stopEditingAddStaticValue();
+
+    if (isMovedOut && movePairId) {
+      const idsToRemove = new Set(moveTransformationIds);
+      additionalTransformationsOnMovedIn.forEach((transformation) => idsToRemove.add(transformation.id));
+      idsToRemove.forEach((id) => removeTransformation(id));
+      return;
+    }
+
     if (renameTransformation) {
       removeTransformation(renameTransformation.id);
       return;
@@ -335,7 +418,19 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       removeTransformation(maskTransformation.id);
       return;
     }
-    if (addTransformationRecord) {
+
+    if (isMovedIn && movePairId) {
+      if (additionalTransformationsOnMovedIn.length > 0) {
+        const latestTransformation =
+          additionalTransformationsOnMovedIn[additionalTransformationsOnMovedIn.length - 1];
+        removeTransformation(latestTransformation.id);
+        return;
+      }
+      moveTransformationIds.forEach((id) => removeTransformation(id));
+      return;
+    }
+
+    if (addTransformationRecord && !isMovedIn) {
       removeTransformation(addTransformationRecord.id);
       return;
     }
@@ -676,7 +771,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     ];
 
     for (const type of modificationDisplayOrder) {
-      const modification = attribute.modifications.find((m) => m.type === type);
+      const modification = activeModifications.find((m) => m.type === type);
       if (!modification) continue;
       const label = labelMap[type];
       if (!label) continue;
@@ -739,7 +834,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       return 'bg-gray-200';
     }
     // All modified lines get light gray background
-    if (isDeleted || isMasked || isRenamed || attribute.modifications.length > 0) {
+    if (isDeleted || isMasked || isRenamed || activeModifications.length > 0 || attribute.isRawOTTL) {
       return 'bg-gray-100';
     }
     return '';
@@ -798,7 +893,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     isHovered || shouldShowMaskSelector || isHighlightedByQueue || isEditingAddStaticValue;
   const shouldShowSelectAction =
     !isDeleted &&
-    (!hasAnyModification || isRenamed || isMasked || isAddSubstring);
+    (!hasAnyModification || isRenamed || isMasked || isAddSubstring || isMovedIn);
   const shouldShowEditAddedAction = !isDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
@@ -992,7 +1087,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                   onPointerEnter={() => setIsActionHovered(true)}
                   onPointerLeave={() => setIsActionHovered(false)}
                 >
-                  {isAdded || isDeleted ? (
+                  {hasUndoableTransformation ? (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1184,7 +1279,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 </span>
               )}
             </span>
-          ) : attribute.modifications.some(m => m.type === 'add-substring') ? (
+          ) : activeModificationTypes.has('add-substring') ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <SyntaxHighlighter
                 value={attribute.value}
@@ -1319,7 +1414,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 </Tooltip>
               </TooltipProvider>
             )}
-            {(isDeleted || isMasked || isRenamed || isAdded) ? (
+            {hasUndoableTransformation ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
