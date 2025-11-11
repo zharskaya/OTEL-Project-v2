@@ -805,7 +805,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       const isModificationActive = isTransformationActiveById(modification.transformationId);
       const badgeClassName = isModificationActive
         ? label.color
-        : 'bg-gray-300/60 text-gray-500';
+        : 'bg-gray-300/60 text-gray-400';
       badges.push(
         <span
           key={`badge-${type}`}
@@ -820,7 +820,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       const isRenameActive = isTransformationActiveById(renameTransformation?.id);
       const renameClassName = isRenameActive
         ? 'bg-indigo-600 text-white'
-        : 'bg-gray-300/60 text-gray-500';
+        : 'bg-gray-300/60 text-gray-400';
       badges.push(
         <span
           key="badge-rename"
@@ -842,7 +842,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     const isMaskActive = isTransformationActiveById(maskTransformation.id);
     const maskClassName = isMaskActive
       ? 'bg-blue-600 text-white'
-      : 'bg-gray-300/60 text-gray-500';
+      : 'bg-gray-300/60 text-gray-400';
     badges.push(
       <span
         key="badge-mask"

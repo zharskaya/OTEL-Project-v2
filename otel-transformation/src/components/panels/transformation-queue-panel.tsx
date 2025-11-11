@@ -485,7 +485,7 @@ function QueueItem({
     : isVisible
       ? 'bg-gray-50'
       : 'bg-white';
-  const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
+  const textColorClass = isVisible ? 'text-gray-900' : 'text-gray-400';
   const labelClassName = isVisible
     ? actionClassName
     : 'bg-gray-300/60 text-gray-500';
@@ -568,11 +568,11 @@ function QueueItem({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-              <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-600' : 'text-gray-400'}`}>
+              <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-900' : 'text-gray-400'}`}>
                   {sectionText}
                 </span>
               ) : null}
-              <span className={`font-mono text-xs break-words ${textColorClass}`}>
+              <span className={`text-xs break-words ${textColorClass}`}>
                 {descriptionContent}
               </span>
             </div>
@@ -709,7 +709,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
           section: sourceLabel,
           description: (
             <>
-              <span className="text-gray-400">{params.key ?? ''}</span>
+              <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+                {params.key ?? ''}
+              </span>
               {` → ${destinationLabel}`}
             </>
           ),
@@ -723,7 +725,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-400">{params.key ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {params.key ?? ''}
+            </span>
             {` = ${valueText}`}
           </>
         ),
@@ -743,9 +747,13 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-400">{newKey ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {newKey ?? ''}
+            </span>
             {` = SUBSTR (`}
-            <span className="text-gray-400">{sourceKey ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {sourceKey ?? ''}
+            </span>
             {`, ${rangeLabel})`}
           </>
         ),
@@ -759,7 +767,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         action: 'DELETE',
         section: formatSectionTitle(transformation.sectionId),
         description: (
-          <span className="text-gray-400">{(keyLabel ?? '').trim() || '--'}</span>
+          <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            {(keyLabel ?? '').trim() || '--'}
+          </span>
         ),
         actionClassName: getActionClassName('DELETE'),
       };
@@ -772,7 +782,9 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-400">{attributeKey ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {attributeKey ?? ''}
+            </span>
             {` ${rangeLabel}`}
           </>
         ),
@@ -786,9 +798,13 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className="text-gray-400">{oldKey ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {oldKey ?? ''}
+            </span>
             {' → '}
-            <span className="text-gray-400">{newKey ?? ''}</span>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              {newKey ?? ''}
+            </span>
           </>
         ),
         actionClassName: getActionClassName('RENAME'),
@@ -882,7 +898,7 @@ function formatSectionTitle(sectionId: string): string {
 
 function formatRangeLabel(start: number, end: number | 'end'): string {
   if (start === 0 && end === 'end') {
-    return '[Entire str]';
+    return '[0..end]';
   }
 
   const endLabel = end === 'end' ? 'end' : end.toString();
