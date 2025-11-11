@@ -568,7 +568,7 @@ function QueueItem({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-              <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-900' : 'text-gray-400'}`}>
+              <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-700' : 'text-gray-400'}`}>
                   {sectionText}
                 </span>
               ) : null}
@@ -584,6 +584,25 @@ function QueueItem({
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
+        {isRawOttlTransformation && onEditRawOttl && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleEditRawOttl}
+                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Edit raw OTTL"
+                >
+                  <PenLine className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Edit raw OTTL transformation</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -605,25 +624,6 @@ function QueueItem({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {isRawOttlTransformation && onEditRawOttl && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleEditRawOttl}
-                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label="Edit raw OTTL"
-                >
-                  <PenLine className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Edit raw OTTL transformation</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -709,7 +709,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
           section: sourceLabel,
           description: (
             <>
-              <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+              <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
                 {params.key ?? ''}
               </span>
               {` → ${destinationLabel}`}
@@ -725,7 +725,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {params.key ?? ''}
             </span>
             {` = ${valueText}`}
@@ -747,11 +747,11 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {newKey ?? ''}
             </span>
             {` = SUBSTR (`}
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {sourceKey ?? ''}
             </span>
             {`, ${rangeLabel})`}
@@ -767,7 +767,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         action: 'DELETE',
         section: formatSectionTitle(transformation.sectionId),
         description: (
-          <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+          <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
             {(keyLabel ?? '').trim() || '--'}
           </span>
         ),
@@ -782,7 +782,7 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {attributeKey ?? ''}
             </span>
             {` ${rangeLabel}`}
@@ -798,11 +798,11 @@ function getRowDetails(transformation: Transformation): RowDetails {
         section: formatSectionTitle(transformation.sectionId),
         description: (
           <>
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {oldKey ?? ''}
             </span>
             {' → '}
-            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900 font-semibold' : 'text-gray-400 font-semibold'}>
+            <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {newKey ?? ''}
             </span>
           </>
