@@ -765,11 +765,13 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   const getModificationLabel = () => {
     if (isDeleted) {
-      const text = movedKeys.has(attribute.key) ? 'MOVED OUT' : 'DELETE';
-      const deleteOpacityClass = getOpacityClassForTransformation(deleteTransformation?.id);
+      const text = isMovedOut ? 'MOVED OUT' : 'DELETE';
+      const deleteBadgeClass = isDeleteActive
+        ? 'bg-red-600 text-white'
+        : 'bg-gray-300/60 text-gray-500';
       return (
         <div className="flex flex-col items-end gap-1 text-right">
-          <span className={`${BADGE_BASE_CLASS} bg-red-600 text-white ${deleteOpacityClass}`}>
+          <span className={`${BADGE_BASE_CLASS} ${deleteBadgeClass}`}>
             {text}
           </span>
         </div>
@@ -800,11 +802,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       if (!modification) continue;
       const label = labelMap[type];
       if (!label) continue;
-      const badgeOpacityClass = getOpacityClassForTransformation(modification.transformationId);
+      const isModificationActive = isTransformationActiveById(modification.transformationId);
+      const badgeClassName = isModificationActive
+        ? label.color
+        : 'bg-gray-300/60 text-gray-500';
       badges.push(
         <span
           key={`badge-${type}`}
-          className={`${BADGE_BASE_CLASS} ${label.color} ${badgeOpacityClass}`}
+          className={`${BADGE_BASE_CLASS} ${badgeClassName}`}
         >
           {label.text}
         </span>
@@ -812,11 +817,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
 
     if (isRenamed) {
-      const renameOpacityClass = getOpacityClassForTransformation(renameTransformation?.id);
+      const isRenameActive = isTransformationActiveById(renameTransformation?.id);
+      const renameClassName = isRenameActive
+        ? 'bg-indigo-600 text-white'
+        : 'bg-gray-300/60 text-gray-500';
       badges.push(
         <span
           key="badge-rename"
-          className={`${BADGE_BASE_CLASS} bg-indigo-600 text-white ${renameOpacityClass}`}
+          className={`${BADGE_BASE_CLASS} ${renameClassName}`}
         >
           RENAME KEY
         </span>
@@ -831,11 +839,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         params.maskEnd,
         rawValue.length
       );
-    const maskOpacityClass = getOpacityClassForTransformation(maskTransformation.id);
+    const isMaskActive = isTransformationActiveById(maskTransformation.id);
+    const maskClassName = isMaskActive
+      ? 'bg-blue-600 text-white'
+      : 'bg-gray-300/60 text-gray-500';
     badges.push(
       <span
         key="badge-mask"
-        className={`${BADGE_BASE_CLASS} bg-blue-600 text-white ${maskOpacityClass}`}
+        className={`${BADGE_BASE_CLASS} ${maskClassName}`}
       >
         MASK {rangeLabel}
       </span>

@@ -486,7 +486,9 @@ function QueueItem({
       ? 'bg-gray-50'
       : 'bg-white';
   const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
-  const labelOpacityClass = isVisible ? '' : 'opacity-30';
+  const labelClassName = isVisible
+    ? actionClassName
+    : 'bg-gray-300/60 text-gray-500';
   const dragStateClass = isDragging ? 'shadow-md ring-1 ring-blue-200/60' : '';
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -539,13 +541,13 @@ function QueueItem({
       </div>
       <div className="relative flex min-w-0 flex-1 items-center pr-12">
         {details.isRawOTTL ? (
-          <div className={`flex min-w-0 flex-1 items-center gap-2 text-xs ${textColorClass}`}>
+          <div className={`flex min-w-0 flex-1 items-center gap-2 text-xs ${isVisible ? textColorClass : 'text-gray-400'}`}>
             <SquareTerminal className={`h-4 w-4 ${isVisible ? 'text-gray-500' : 'text-gray-400 opacity-30'}`} />
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className="font-mono break-words text-left text-gray-800 cursor-pointer"
+                    className={`font-mono break-words text-left ${isVisible ? 'text-gray-800' : 'text-gray-400'} cursor-pointer`}
                     onClick={handleEditRawOttl}
                   >
                     {descriptionContent}
@@ -560,7 +562,7 @@ function QueueItem({
         ) : (
           <div className="flex min-w-0 flex-1 items-start gap-3">
             <span
-              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName} ${labelOpacityClass}`}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${labelClassName}`}
             >
               {labelText}
             </span>
@@ -704,11 +706,11 @@ function getRowDetails(transformation: Transformation): RowDetails {
         const destinationLabel = formatMoveSectionLabel(transformation.sectionId);
         return {
           action: 'MOVE',
-          section: destinationLabel,
+          section: sourceLabel,
           description: (
             <>
               <span className="text-gray-400">{params.key ?? ''}</span>
-              {` → [${destinationLabel}]`}
+              {` → ${destinationLabel}`}
             </>
           ),
           actionClassName: getActionClassName('MOVE'),
