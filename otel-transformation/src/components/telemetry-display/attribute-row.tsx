@@ -148,7 +148,13 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
     return transformation.order >= start && transformation.order < end;
   };
-  const getOpacityClassForTransformation = (_transformationId?: string | null) => '';
+  const getOpacityClassForTransformation = (transformationId?: string | null) => {
+    if (!transformationId) {
+      return '';
+    }
+    const status = getTransformationStatusById(transformationId);
+    return status && status !== TransformationStatus.ACTIVE ? 'opacity-30' : '';
+  };
   const getTransformationAttributePath = (transformation: Transformation): string | undefined => {
     const params = transformation.params as unknown as { [key: string]: unknown };
     const attributePath = params['attributePath'];
@@ -174,6 +180,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       case 'delete':
       case 'mask':
       case 'rename-key':
+      case 'add':
+      case 'add-static':
+      case 'add-substring':
         return true;
       default:
         return false;
@@ -225,9 +234,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const isMaskActive = maskTransformation?.status === TransformationStatus.ACTIVE;
   const isRenameActive = renameTransformation?.status === TransformationStatus.ACTIVE;
 
-  const isDeleted = forceDeleted || Boolean(isDeleteActive);
-  const isMasked = Boolean(isMaskActive);
-  const isRenamed = Boolean(isRenameActive);
+  const isDeleted = forceDeleted || Boolean(deleteTransformation);
+  const isMasked = Boolean(maskTransformation);
+  const isRenamed = Boolean(renameTransformation);
   const isAdded =
     activeModificationTypes.has('add') ||
     activeModificationTypes.has('add-static') ||
@@ -244,13 +253,11 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
           )
       )
     : null;
-  const isAddTransformationActive =
-    addTransformationRecord?.status === TransformationStatus.ACTIVE;
   const isAddStatic =
-    Boolean(isAddTransformationActive) &&
+    Boolean(addTransformationRecord) &&
     (activeModificationTypes.has('add') || activeModificationTypes.has('add-static'));
   const isAddSubstring =
-    Boolean(isAddTransformationActive) && activeModificationTypes.has('add-substring');
+    Boolean(addTransformationRecord) && activeModificationTypes.has('add-substring');
   const hasUndoableTransformation = Boolean(
     renameTransformation || maskTransformation || addTransformationRecord || deleteTransformation
   );

@@ -44,7 +44,14 @@ import {
   type AddStaticParams,
   type DeleteParams,
 } from '@/types/transformation-types';
-import { Trash2, SquareTerminal, PenLine, GripVertical } from 'lucide-react';
+import {
+  Trash2,
+  SquareTerminal,
+  PenLine,
+  GripVertical,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
 
@@ -180,6 +187,72 @@ export function TransformationQueuePanel({
   const handleRawOttlSave = useCallback((_id: string, _statement: string) => {
     setRawOttlEditor(null);
   }, []);
+
+  const getTransformationAttributePath = useCallback((transformation: Transformation): string | undefined => {
+    const params = transformation.params as unknown as Record<string, unknown>;
+    const attributePath = params['attributePath'];
+    if (typeof attributePath === 'string') {
+      return attributePath;
+    }
+    const movedToPath = params['movedToPath'];
+    if (typeof movedToPath === 'string') {
+      return movedToPath;
+    }
+    const movedFromPath = params['movedFromPath'];
+    if (typeof movedFromPath === 'string') {
+      return movedFromPath;
+    }
+    return undefined;
+  }, []);
+
+  const handleToggleVisibility = useCallback(
+    (transformation: Transformation) => {
+      const nextStatus =
+        transformation.status === TransformationStatus.ACTIVE
+          ? TransformationStatus.DRAFT
+          : TransformationStatus.ACTIVE;
+
+      const idsToUpdate = new Set<string>([transformation.id]);
+
+      if (transformation.pairedTransformationId) {
+        const pairId = transformation.pairedTransformationId;
+        transformations.forEach((candidate) => {
+          if (candidate.pairedTransformationId === pairId) {
+            idsToUpdate.add(candidate.id);
+          }
+        });
+
+        const movedOutTransformation = transformations.find(
+          (candidate) =>
+            candidate.pairedTransformationId === pairId &&
+            candidate.type === TransformationType.DELETE
+        );
+        const movedInPath = movedOutTransformation
+          ? (movedOutTransformation.params as DeleteParams).movedToPath
+          : undefined;
+
+        if (movedInPath) {
+          transformations.forEach((candidate) => {
+            if (idsToUpdate.has(candidate.id)) {
+              return;
+            }
+            if (getTransformationAttributePath(candidate) === movedInPath) {
+              idsToUpdate.add(candidate.id);
+            }
+          });
+        }
+      }
+
+      idsToUpdate.forEach((id) => {
+        const target = transformations.find((candidate) => candidate.id === id);
+        if (!target || target.status === nextStatus) {
+          return;
+        }
+        updateTransformation(id, { status: nextStatus });
+      });
+    },
+    [getTransformationAttributePath, transformations, updateTransformation]
+  );
 
   useEffect(() => {
     setIsHydrated(true);
@@ -326,6 +399,7 @@ export function TransformationQueuePanel({
                       <QueueItem
                         key={transformation.id}
                         transformation={transformation}
+                        onToggleVisibility={handleToggleVisibility}
                         showDropIndicator={dropIndicatorId === transformation.id}
                         onRemove={removeTransformation}
                         onEditRawOttl={(rawTransformation) => {
@@ -360,12 +434,7 @@ interface RowDetails {
 
 interface QueueItemProps {
   transformation: Transformation;
-  onRemove: (id: string) => void;
-  onEditRawOttl?: (transformation: Transformation) => void;
-}
-
-interface QueueItemProps {
-  transformation: Transformation;
+  onToggleVisibility: (transformation: Transformation) => void;
   showDropIndicator: boolean;
   onRemove: (id: string) => void;
   onEditRawOttl?: (transformation: Transformation) => void;
@@ -373,6 +442,7 @@ interface QueueItemProps {
 
 function QueueItem({
   transformation,
+  onToggleVisibility,
   showDropIndicator,
   onRemove,
   onEditRawOttl,
@@ -397,8 +467,14 @@ function QueueItem({
   const descriptionContent = details.description;
   const actionClassName = details.actionClassName;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
-  const baseBackgroundClass = isHighlighted ? 'bg-gray-300' : 'bg-gray-200/60';
-  const textColorClass = 'text-gray-600';
+  const isVisible = transformation.status === TransformationStatus.ACTIVE;
+  const baseBackgroundClass = isHighlighted
+    ? 'bg-gray-300'
+    : isVisible
+      ? 'bg-gray-200/60'
+      : 'bg-white';
+  const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
+  const labelOpacityClass = isVisible ? '' : 'opacity-30';
   const dragStateClass = isDragging ? 'shadow-md ring-1 ring-blue-200/60' : '';
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -442,7 +518,7 @@ function QueueItem({
       }}
     >
       <div
-        className={`flex h-6 w-6 items-center justify-center text-gray-400 transition-opacity ${
+        className={`flex h-6 w-6 items-center justify-center text-gray-600 transition-opacity ${
           showActions ? 'opacity-100' : 'opacity-0'
         } pointer-events-none`}
         aria-hidden="true"
@@ -471,12 +547,14 @@ function QueueItem({
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName}`}>
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white ${actionClassName} ${labelOpacityClass}`}
+            >
               {labelText}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-                <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-500' : 'text-gray-400/80'}`}>
                   {sectionText}
                 </span>
               ) : null}
@@ -492,6 +570,27 @@ function QueueItem({
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onToggleVisibility(transformation)}
+                className={`rounded-md p-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  isVisible
+                    ? 'bg-gray-900 text-white hover:bg-gray-700'
+                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
+                }`}
+                aria-label={isVisible ? 'Disable transformation' : 'Enable transformation'}
+              >
+                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isVisible ? 'Disable transformation' : 'Enable transformation'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         {isRawOttlTransformation && onEditRawOttl && (
           <TooltipProvider>
             <Tooltip>
