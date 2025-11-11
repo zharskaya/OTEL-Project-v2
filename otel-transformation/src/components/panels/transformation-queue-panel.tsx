@@ -106,7 +106,7 @@ export function TransformationQueuePanel({
 
   useEffect(() => {
     setActiveRange({
-      start: 0,
+          start: 0,
       end: activeTransformationCount,
     });
   }, [activeTransformationCount, setActiveRange]);
@@ -129,7 +129,7 @@ export function TransformationQueuePanel({
       const { active, over } = event;
       if (!over || active.id === over.id) {
         return;
-      }
+    }
 
       const activeIndex = orderedTransformations.findIndex(
         (transformation) => transformation.id === active.id
@@ -213,23 +213,23 @@ export function TransformationQueuePanel({
 
       <div className="flex-1 overflow-hidden bg-white">
         <ScrollArea className="h-full">
-          <div className="space-y-1 p-1">
-            {rawOttlEditor?.mode === 'create' && (
-              <div className="mb-1 rounded-md bg-gray-200 p-1">
-                <RawOTTLForm
-                  sectionId={rawOttlEditor.sectionId}
-                  initialStatement={rawOttlEditor.statement}
-                  onCancel={handleRawOttlCancel}
-                  onSave={handleRawOttlSave}
-                />
-              </div>
-            )}
-            {displayTransformations.length === 0 && !rawOttlEditor ? (
-              <div className="p-4 text-center text-sm text-gray-500">
-                <p className="font-semibold pb-1">No transformations yet.</p>
-                <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
-              </div>
-            ) : (
+              <div className="space-y-1 p-1">
+                {rawOttlEditor?.mode === 'create' && (
+                  <div className="mb-1 rounded-md bg-gray-200 p-1">
+                    <RawOTTLForm
+                      sectionId={rawOttlEditor.sectionId}
+                      initialStatement={rawOttlEditor.statement}
+                      onCancel={handleRawOttlCancel}
+                      onSave={handleRawOttlSave}
+                    />
+                  </div>
+                )}
+                {displayTransformations.length === 0 && !rawOttlEditor ? (
+                  <div className="p-4 text-center text-sm text-gray-500">
+                    <p className="font-semibold pb-1">No transformations yet.</p>
+                    <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
+                  </div>
+                ) : (
               <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
                 <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
                   {displayTransformations.map((transformation) => {
@@ -245,9 +245,9 @@ export function TransformationQueuePanel({
                             sectionId: rawOttlEditor.sectionId,
                             statement: rawOttlEditor.statement,
                           }}
-                          onCancel={handleRawOttlCancel}
-                          onSave={handleRawOttlSave}
-                        />
+                            onCancel={handleRawOttlCancel}
+                            onSave={handleRawOttlSave}
+                          />
                       );
                     }
 
@@ -269,8 +269,8 @@ export function TransformationQueuePanel({
                       />
                     );
                   })}
-                </SortableContext>
-              </DndContext>
+            </SortableContext>
+          </DndContext>
             )}
           </div>
         </ScrollArea>
@@ -377,8 +377,8 @@ function QueueItem({
           showActions ? 'opacity-100' : 'opacity-0'
         } pointer-events-none`}
         aria-hidden="true"
-      >
-        <GripVertical className="h-4 w-4" />
+          >
+            <GripVertical className="h-4 w-4" />
       </div>
       <div className="relative flex min-w-0 flex-1 items-center pr-12">
         {details.isRawOTTL ? (
@@ -521,8 +521,8 @@ function RawOttlEditorItem({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+        {...attributes}
+        {...listeners}
       className={`mb-0.5 rounded-md bg-gray-200 p-1 cursor-default ${dragStateClass}`}
     >
       <RawOTTLForm

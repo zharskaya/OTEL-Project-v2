@@ -32,6 +32,26 @@ import { RenameKeyForm } from '@/components/transformations/rename-key-form';
 
 const BADGE_BASE_CLASS = 'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
 
+interface SelectionHandles {
+  start: {
+    left: number;
+    top: number;
+  };
+  end: {
+    left: number;
+    bottom: number;
+  };
+  bounding: {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    height: number;
+  };
+}
+
+const SELECTION_HANDLE_SIZE = 4;
+
 const formatRangeLabel = (
   start: number,
   end: number | 'end',
@@ -88,6 +108,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const addStaticValueInputRef = useRef<HTMLInputElement>(null);
   const [isEditingAddStaticValue, setIsEditingAddStaticValue] = useState(false);
   const [addStaticValueDraft, setAddStaticValueDraft] = useState('');
+  const [selectionHandles, setSelectionHandles] = useState<SelectionHandles | null>(null);
   const { selection, clearSelection } = useTextSelection(valueRef);
   const {
     addTransformation,
@@ -778,6 +799,87 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
   const valueTooltipMessage = isAddStatic && !isMovedIn ? 'Click to edit static value' : 'Select to transform';
+  const dragCursorClass = isDraggable ? 'cursor-grab active:cursor-grabbing' : '';
+
+  const updateSelectionHandles = React.useCallback(() => {
+    if (!isValueInteractive || !selection || !valueRef.current) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    const windowSelection = window.getSelection();
+    if (!windowSelection || windowSelection.rangeCount === 0) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    const range = windowSelection.getRangeAt(0);
+    if (!valueRef.current.contains(range.commonAncestorContainer)) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    if (selection.end <= selection.start) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    const clientRects = range.getClientRects();
+    const boundingRect = range.getBoundingClientRect();
+
+    if (!boundingRect || boundingRect.width === 0 || boundingRect.height === 0) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    const firstRect = clientRects.length > 0 ? clientRects[0] : boundingRect;
+    const lastRect = clientRects.length > 0 ? clientRects[clientRects.length - 1] : boundingRect;
+
+    setSelectionHandles({
+      start: {
+        left: firstRect.left,
+        top: firstRect.top,
+      },
+      end: {
+        left: lastRect.right,
+        bottom: lastRect.bottom,
+      },
+      bounding: {
+        top: boundingRect.top,
+        bottom: boundingRect.bottom,
+        left: boundingRect.left,
+        right: boundingRect.right,
+        height: boundingRect.height,
+      },
+    });
+  }, [isValueInteractive, selection, valueRef]);
+
+  React.useEffect(() => {
+    updateSelectionHandles();
+  }, [updateSelectionHandles]);
+
+  React.useEffect(() => {
+    if (!selection) {
+      setSelectionHandles(null);
+      return;
+    }
+
+    const handleWindowUpdate = () => updateSelectionHandles();
+
+    window.addEventListener('scroll', handleWindowUpdate, true);
+    window.addEventListener('resize', handleWindowUpdate);
+
+    return () => {
+      window.removeEventListener('scroll', handleWindowUpdate, true);
+      window.removeEventListener('resize', handleWindowUpdate);
+    };
+  }, [selection, updateSelectionHandles]);
+
+  React.useEffect(() => {
+    if (!isValueInteractive) {
+      setSelectionHandles(null);
+    }
+  }, [isValueInteractive]);
 
   const openSelectionTooltip = () => {
     if (!isValueInteractive || isEditingAddStaticValue) {
@@ -798,7 +900,9 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       <div
         ref={setNodeRef}
         style={style}
-        className={`relative flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none ${getRowBackgroundClass()} ${isRowHoverActive ? 'bg-gray-300' : ''}`}
+        {...(isDraggable ? sortableAttributes : {})}
+        {...(isDraggable ? listeners : {})}
+        className={`relative flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none ${getRowBackgroundClass()} ${isRowHoverActive ? 'bg-gray-300' : ''} ${dragCursorClass}`}
         onMouseEnter={handleRowPointerEnter}
         onMouseLeave={handleRowPointerLeave}
         onPointerLeave={handleRowPointerLeave}
@@ -811,8 +915,6 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
             <Tooltip>
               <TooltipTrigger asChild>
                 <div
-                  {...(isDraggable ? sortableAttributes : {})}
-                  {...(isDraggable ? listeners : {})}
                   className={`absolute top-1/2 -translate-y-1/2 text-gray-600 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
                   style={{ left: `${4 + attribute.depth * 16}px` }}
                 >
@@ -1032,13 +1134,25 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 <TooltipTrigger asChild>
                   <div
                     ref={valueContainerRef}
-            className={`inline-flex max-w-full flex-col leading-none focus:outline-none ${isValueInteractive ? 'cursor-pointer' : 'cursor-default'}`}
+                    data-dnd-kit-no-drag
+                    data-dnd-kit-no-touch-action
+                    className={`inline-flex max-w-full flex-col select-text leading-none focus:outline-none ${isValueInteractive ? 'cursor-text' : 'cursor-default'}`}
                     tabIndex={isValueInteractive ? 0 : -1}
                     onMouseEnter={handleValueMouseEnter}
                     onMouseLeave={handleValueMouseLeave}
                     onPointerLeave={handleValueMouseLeave}
                     onKeyDown={handleValueKeyDown}
-                    onClick={() => {
+                    onPointerDown={(event) => {
+                      if (isValueInteractive) {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onMouseDown={(event) => {
+                      if (isValueInteractive) {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onClick={(event) => {
                       if (isAddStatic && !isMovedIn) {
                         handleStartEditAddStaticValue();
                       }
@@ -1241,6 +1355,49 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         </>
         )}
       </div>
+
+      {selectionHandles && (
+        <>
+          <div
+            className="pointer-events-none fixed z-50"
+            style={{
+              left: `${selectionHandles.start.left - SELECTION_HANDLE_SIZE / 2}px`,
+              top: `${selectionHandles.bounding.bottom}px`,
+            }}
+          >
+            <span
+              className="block"
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: `${SELECTION_HANDLE_SIZE / 2}px solid transparent`,
+                borderRight: `${SELECTION_HANDLE_SIZE / 2}px solid transparent`,
+                borderBottom: `${SELECTION_HANDLE_SIZE}px solid #1d4ed8`,
+                transform: 'translateY(2px)',
+              }}
+            />
+          </div>
+          <div
+            className="pointer-events-none fixed z-50"
+            style={{
+              left: `${selectionHandles.end.left - SELECTION_HANDLE_SIZE / 2}px`,
+              top: `${selectionHandles.bounding.bottom}px`,
+            }}
+          >
+            <span
+              className="block"
+              style={{
+                width: 0,
+                height: 0,
+                borderLeft: `${SELECTION_HANDLE_SIZE / 2}px solid transparent`,
+                borderRight: `${SELECTION_HANDLE_SIZE / 2}px solid transparent`,
+                borderBottom: `${SELECTION_HANDLE_SIZE}px solid #1d4ed8`,
+                transform: 'translateY(2px)',
+              }}
+            />
+          </div>
+        </>
+      )}
 
       {/* Mask/Substring selector tooltip */}
       {shouldShowMaskSelector && activeSelection && (

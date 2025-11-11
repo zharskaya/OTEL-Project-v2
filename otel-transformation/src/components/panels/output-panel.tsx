@@ -45,7 +45,7 @@ export function OutputPanel({
         {isEmpty ? (
           <div className="p-4 text-center text-sm text-gray-500">
           <p>
-               Click Preview or press (⌘/Ctrl + Enter) to view the output
+               Click Preview or press (⌘/Ctrl + Enter) to view transformed data
           </p>
         </div>
           

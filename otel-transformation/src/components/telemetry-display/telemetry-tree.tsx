@@ -39,7 +39,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    }),
     useSensor(KeyboardSensor)
   );
 

@@ -63,8 +63,8 @@ export const MaskValueSelector = React.memo(function MaskValueSelector({
         onMouseEnter={onPointerEnter}
         onMouseLeave={onPointerLeave}
       >
-        <div className="mb-3 text-center">
-          <p className="text-xs font-semibold text-white leading-tight">Substring {rangeLabel}</p>
+        <div className="mb-2 text-center">
+          <p className="text-xs text-gray-400 leading-tight">Substring {rangeLabel}</p>
         </div>
         <div className="flex items-center justify-center gap-2">
           {showMaskButton && (
