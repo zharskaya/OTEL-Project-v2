@@ -56,11 +56,16 @@ import type { TelemetrySection } from '@/types/telemetry-types';
 
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
+  onPreview?: () => void;
+  isPreviewDisabled?: boolean;
 }
 
 export function TransformationQueuePanel({
   sections,
+  onPreview,
+  isPreviewDisabled = false,
 }: TransformationQueuePanelProps) {
+  const [isHydrated, setIsHydrated] = useState(false);
   const transformations = useTransformations();
   const {
     removeTransformation,
@@ -181,10 +186,83 @@ export function TransformationQueuePanel({
         transformation.status === TransformationStatus.ACTIVE
           ? TransformationStatus.DRAFT
           : TransformationStatus.ACTIVE;
+
       updateTransformation(transformation.id, { status: nextStatus });
+
+      if (!transformation.pairedTransformationId) {
+        return;
+      }
+
+      const pairedTransformation = transformations.find(
+        (candidate) =>
+          candidate.id !== transformation.id &&
+          candidate.pairedTransformationId === transformation.pairedTransformationId
+      );
+
+      if (pairedTransformation && pairedTransformation.status !== nextStatus) {
+        updateTransformation(pairedTransformation.id, { status: nextStatus });
+      }
     },
-    [updateTransformation]
+    [transformations, updateTransformation]
   );
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  if (!isHydrated) {
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
+          <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">Transformations</h2>
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleAddRawOttl}
+                    className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!defaultSectionId}
+                    aria-label="Add raw OTTL transformation"
+                  >
+                    <SquareTerminal className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Add raw OTTL transformation</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {onPreview && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={onPreview}
+                      disabled={isPreviewDisabled}
+                      className="flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-2 text-xs font-medium tracking-wide text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-1 focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:bg-gray-500"
+                    >
+                      Preview
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Preview transformed data (⌘/Ctrl + Enter)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden bg-white">
+          <ScrollArea className="h-full">
+            <div className="p-4 text-center text-sm text-gray-400">
+              <p>Loading transformations…</p>
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -208,6 +286,24 @@ export function TransformationQueuePanel({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          {onPreview && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onPreview}
+                    disabled={isPreviewDisabled}
+                    className="flex items-center gap-1.5 rounded-md bg-gray-900 px-2.5 py-2 text-xs font-medium tracking-wide text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-1 focus:ring-offset-gray-900 disabled:cursor-not-allowed disabled:bg-gray-500"
+                  >
+                    Preview
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Preview transformed data (⌘/Ctrl + Enter)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
 
@@ -225,7 +321,7 @@ export function TransformationQueuePanel({
                   </div>
                 )}
                 {displayTransformations.length === 0 && !rawOttlEditor ? (
-                  <div className="p-4 text-center text-sm text-gray-500">
+                  <div className="p-4 text-center text-sm text-gray-400">
                     <p className="font-semibold pb-1">No transformations yet.</p>
                     <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
                   </div>

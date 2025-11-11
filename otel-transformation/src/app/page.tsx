@@ -21,8 +21,8 @@ export default function Home() {
   const queuePanelWidth = 28;
   const outputPanelWidth = 28;
   const totalWidth = inputPanelWidth + queuePanelWidth + outputPanelWidth;
-  const outerSplitLeftWidth = (queuePanelWidth / totalWidth) * 100;
-  const innerSplitLeftWidth = (inputPanelWidth / (inputPanelWidth + outputPanelWidth)) * 100;
+  const outerSplitLeftWidth = (inputPanelWidth / totalWidth) * 100;
+  const innerSplitLeftWidth = (queuePanelWidth / (queuePanelWidth + outputPanelWidth)) * 100;
 
   const [inputTree, setInputTree] = useState(() =>
     TelemetryParser.parse(SAMPLE_TELEMETRY_DATA.resourceSpans)
@@ -67,17 +67,18 @@ export default function Home() {
       <SplitPanel
         initialLeftWidth={outerSplitLeftWidth}
         leftPanel={
-          <TransformationQueuePanel
-            sections={inputTree.sections}
-          />
+          <InputPanel>
+            <TelemetryTree tree={inputTree} />
+          </InputPanel>
         }
         rightPanel={
           <SplitPanel
             initialLeftWidth={innerSplitLeftWidth}
             leftPanel={
-              <InputPanel onPreview={handleRun}>
-                <TelemetryTree tree={inputTree} />
-              </InputPanel>
+              <TransformationQueuePanel
+                sections={inputTree.sections}
+                onPreview={handleRun}
+              />
             }
             rightPanel={
               <OutputPanel

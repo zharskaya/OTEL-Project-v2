@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -26,6 +26,7 @@ interface TelemetryTreeProps {
 }
 
 export function TelemetryTree({ tree }: TelemetryTreeProps) {
+  const [isHydrated, setIsHydrated] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
   const [pendingCrossSectionId, setPendingCrossSectionId] = useState<string | null>(null);
@@ -44,6 +45,25 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     }),
     useSensor(KeyboardSensor)
   );
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  if (!isHydrated) {
+    return (
+      <div className="flex h-full flex-col">
+        {tree.sections.map((section) => (
+          <div
+            key={section.id}
+            className="border-b border-gray-200 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
+          >
+            {section.label}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   // Extract section ID and attribute ID from a composite ID (format: "sectionId:attributeId")
   const parseId = (id: string): { sectionId: string; attributeId: string } | null => {
@@ -221,13 +241,19 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         return;
       }
 
+      const timestamp = Date.now();
+      const pairId = `move-${timestamp}`;
+      const deleteId = `t-${timestamp}-delete`;
+      const addId = `t-${timestamp}-add`;
+
       addTransformation({
-        id: `t-${Date.now()}-delete`,
+        id: deleteId,
         type: TransformationType.DELETE,
         order: 0,
         sectionId: activeInfo.sectionId,
         createdAt: new Date(),
         status: TransformationStatus.ACTIVE,
+        pairedTransformationId: pairId,
         params: {
           type: TransformationType.DELETE,
           attributePath: draggedAttr.path,
@@ -235,18 +261,20 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           movedToSectionId: overInfo.sectionId,
           movedToSectionLabel: destSection?.label,
           movedToPath: `${destSection?.id ?? overInfo.sectionId}.${draggedKey}`,
+          pairedTransformationId: pairId,
         },
       });
 
       const valueForAdd = activeAttrData?.value ?? draggedAttr.value;
 
       addTransformation({
-        id: `t-${Date.now()}-add`,
+        id: addId,
         type: TransformationType.ADD_STATIC,
         order: 0,
         sectionId: overInfo.sectionId,
         createdAt: new Date(),
         status: TransformationStatus.ACTIVE,
+        pairedTransformationId: pairId,
         params: {
           type: TransformationType.ADD_STATIC,
           insertionPoint: destSection.id,
@@ -255,6 +283,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           movedFromSectionId: activeInfo.sectionId,
           movedFromSectionLabel: sourceSection?.label,
           movedFromPath: draggedAttr.path,
+          pairedTransformationId: pairId,
         },
       });
 

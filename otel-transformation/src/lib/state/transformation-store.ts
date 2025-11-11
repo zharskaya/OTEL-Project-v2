@@ -71,7 +71,23 @@ export const useTransformationStore = create<TransformationStore>(
 
     removeTransformation: (id) =>
       set((state) => {
-        const filtered = state.transformations.filter((t) => t.id !== id);
+        const target = state.transformations.find((t) => t.id === id);
+        if (!target) {
+          return state;
+        }
+
+        const idsToRemove = new Set<string>([id]);
+        if (target.pairedTransformationId) {
+          state.transformations.forEach((transformation) => {
+            if (
+              transformation.pairedTransformationId === target.pairedTransformationId
+            ) {
+              idsToRemove.add(transformation.id);
+            }
+          });
+        }
+
+        const filtered = state.transformations.filter((t) => !idsToRemove.has(t.id));
         return { transformations: filtered.map((item, index) => ({ ...item, order: index })) };
       }),
 

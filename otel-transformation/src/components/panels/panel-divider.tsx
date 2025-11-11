@@ -4,7 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { GripVertical } from 'lucide-react';
 
 interface PanelDividerProps {
-  onResize: (leftWidth: number) => void;
+  onResize: (clientX: number) => void;
 }
 
 export function PanelDivider({ onResize }: PanelDividerProps) {
@@ -19,13 +19,7 @@ export function PanelDivider({ onResize }: PanelDividerProps) {
   const handleMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!isDragging) return;
-
-      const windowWidth = window.innerWidth;
-      const newLeftWidth = (e.clientX / windowWidth) * 100;
-
-      // Apply constraints: 20% minimum, 80% maximum
-      const constrainedWidth = Math.max(20, Math.min(80, newLeftWidth));
-      onResize(constrainedWidth);
+      onResize(e.clientX);
     },
     [isDragging, onResize]
   );

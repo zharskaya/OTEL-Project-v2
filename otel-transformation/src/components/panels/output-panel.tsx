@@ -31,10 +31,11 @@ export function OutputPanel({
           {!isEmpty && (
             <button
               onClick={handleDownload}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-gray-900 cursor-pointer"
+              className="rounded-md p-1.5 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               title="Download as JSON"
+              aria-label="Download as JSON"
             >
-              Export
+              <Download className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -43,7 +44,7 @@ export function OutputPanel({
       {/* Content */}
       <div className="relative flex-1 overflow-auto bg-white pb-12">
         {isEmpty ? (
-          <div className="p-4 text-center text-sm text-gray-500">
+          <div className="p-4 text-center text-sm text-gray-400">
           <p>
                Click Preview or press (⌘/Ctrl + Enter) to view transformed data
           </p>
@@ -53,7 +54,7 @@ export function OutputPanel({
               <>
                 {/* Info message when changes are made */}
                 {hasChanges && (
-                  <div className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50 p-1 text-center text-sm text-blue-800 font-medium">
+                  <div className="sticky top-0 z-10 border-b border-blue-200 bg-blue-200 p-1 text-center text-sm text-blue-800 font-medium">
                     Change made. Click Preview or press (⌘ / Ctrl + Enter) to view updates.
                   </div>
                 )}

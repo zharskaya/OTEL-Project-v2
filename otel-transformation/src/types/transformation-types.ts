@@ -13,6 +13,7 @@ export interface Transformation {
   createdAt: Date;
   params: TransformationParams;
   status: TransformationStatus;
+  pairedTransformationId?: string;
 }
 
 export enum TransformationType {
@@ -46,6 +47,7 @@ export interface AddStaticParams {
   movedFromSectionId?: string;
   movedFromSectionLabel?: string;
   movedFromPath?: string;
+  pairedTransformationId?: string;
 }
 
 export interface AddSubstringParams {
@@ -66,6 +68,7 @@ export interface DeleteParams {
   movedToSectionId?: string;
   movedToSectionLabel?: string;
   movedToPath?: string;
+  pairedTransformationId?: string;
 }
 
 export interface MaskParams {

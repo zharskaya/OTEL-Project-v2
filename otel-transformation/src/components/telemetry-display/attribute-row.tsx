@@ -161,6 +161,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const deleteTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.DELETE &&
+      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).attributeKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
@@ -169,6 +170,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const maskTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.MASK &&
+      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).attributeKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
@@ -177,6 +179,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const renameTransformation = transformations.find(
     (t) =>
       t.type === TransformationType.RENAME_KEY &&
+      t.status === TransformationStatus.ACTIVE &&
       (t.params as any).oldKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
@@ -196,6 +199,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       (t.type === TransformationType.ADD_STATIC || 
        t.type === TransformationType.ADD_SUBSTRING ||
        t.type === TransformationType.RAW_OTTL) &&
+      t.status === TransformationStatus.ACTIVE &&
       attribute.modifications.some(m => m.transformationId === t.id)
     ) : null;
   const addStaticInitialInput = useMemo(() => {
