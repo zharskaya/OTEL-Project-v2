@@ -219,11 +219,11 @@ export function TransformationQueuePanel({
         transformations.forEach((candidate) => {
           if (candidate.pairedTransformationId === pairId) {
             idsToUpdate.add(candidate.id);
-          }
+      }
         });
 
         const movedOutTransformation = transformations.find(
-          (candidate) =>
+        (candidate) =>
             candidate.pairedTransformationId === pairId &&
             candidate.type === TransformationType.DELETE
         );
@@ -481,7 +481,7 @@ function QueueItem({
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
   const isVisible = transformation.status === TransformationStatus.ACTIVE;
   const baseBackgroundClass = isHighlighted
-    ? 'bg-gray-300'
+    ? 'bg-gray-300/60'
     : isVisible
       ? 'bg-gray-200/60'
       : 'bg-white';
@@ -506,7 +506,7 @@ function QueueItem({
   return (
     <>
       {showDropIndicator ? <div className="mx-2 h-0.5 rounded bg-blue-500" /> : null}
-      <div
+    <div
       ref={setNodeRef}
       style={style}
       {...attributes}

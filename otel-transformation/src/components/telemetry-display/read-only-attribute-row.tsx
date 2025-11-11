@@ -1,15 +1,91 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { DisplayAttribute } from '@/types/telemetry-types';
 import { SyntaxHighlighter } from './syntax-highlighter';
+import {
+  useHighlightedTransformationIds,
+  useTransformationHighlightActions,
+  useHoveredInputAttributeId,
+  useHoveredOutputAttributeId,
+  useTransformations,
+} from '@/lib/state/hooks';
+import type { Transformation, TransformationStatus } from '@/types/transformation-types';
+
+function getTransformationAttributePath(transformation: Transformation): string | undefined {
+  const params = transformation.params as unknown as { [key: string]: unknown };
+  const attributePath = params['attributePath'];
+  if (typeof attributePath === 'string') {
+    return attributePath;
+  }
+  const movedToPath = params['movedToPath'];
+  if (typeof movedToPath === 'string') {
+    return movedToPath;
+  }
+  const movedFromPath = params['movedFromPath'];
+  if (typeof movedFromPath === 'string') {
+    return movedFromPath;
+  }
+  return undefined;
+}
 
 interface ReadOnlyAttributeRowProps {
   attribute: DisplayAttribute;
 }
 
 export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
-  const [isHovered, setIsHovered] = useState(false);
+  const [isHovered, setIsHovered] = React.useState(false);
+  const highlightedTransformationIds = useHighlightedTransformationIds();
+  const {
+    setHoveredTransformationIds,
+    clearHoveredTransformationIds,
+    setHoveredOutputAttributeId,
+    clearHoveredOutputAttributeId,
+  } = useTransformationHighlightActions();
+  const hoveredInputAttributeId = useHoveredInputAttributeId();
+  const hoveredOutputAttributeId = useHoveredOutputAttributeId();
+  const transformations = useTransformations();
+
+  const relatedTransformationIds = React.useMemo(
+    () =>
+      attribute.modifications
+        .map((modification) => modification.transformationId)
+        .filter((id): id is string => Boolean(id)),
+    [attribute.modifications]
+  );
+
+  const additionalTransformationIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    const attributePath = attribute.path;
+
+    transformations.forEach((transformation) => {
+      const path = getTransformationAttributePath(transformation);
+      if (path !== attributePath) {
+        return;
+      }
+      // Skip the move pair (will be captured by modifications)
+      if (
+        transformation.type === 'delete' ||
+        transformation.type === 'add-static' ||
+        transformation.type === 'add'
+      ) {
+        return;
+      }
+      ids.add(transformation.id);
+    });
+
+    return ids;
+  }, [attribute.path, transformations]);
+
+  const isHighlightFromTransformations =
+    relatedTransformationIds.some((id) => highlightedTransformationIds.includes(id));
+  const isHighlightFromAdditional =
+    additionalTransformationIds.size > 0 &&
+    Array.from(additionalTransformationIds).some((id) => highlightedTransformationIds.includes(id));
+  const isHighlightedByInput = hoveredInputAttributeId === attribute.id;
+  const isHighlightedByOutput = hoveredOutputAttributeId === attribute.id;
+  const isHighlighted =
+    isHighlightFromTransformations || isHighlightFromAdditional || isHighlightedByInput || isHighlightedByOutput;
 
   // Check if this attribute was added or modified
   const isAdded = attribute.modifications.some(m => 
@@ -29,11 +105,63 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
     return '';
   };
 
+  const highlightBackgroundClass = isHighlighted ? 'bg-gray-300/60' : '';
+
+  const handlePointerEnter = () => {
+    setIsHovered(true);
+    if (relatedTransformationIds.length > 0) {
+      setHoveredTransformationIds(relatedTransformationIds);
+    }
+    setHoveredOutputAttributeId(attribute.id);
+  };
+
+  const handlePointerLeave = () => {
+    setIsHovered(false);
+    if (relatedTransformationIds.length > 0) {
+      const relatedSet = new Set(relatedTransformationIds);
+      const shouldClear =
+        highlightedTransformationIds.length > 0 &&
+        highlightedTransformationIds.every((id) => relatedSet.has(id));
+      if (shouldClear) {
+        clearHoveredTransformationIds();
+      }
+    } else if (highlightedTransformationIds.length === 0) {
+      clearHoveredTransformationIds();
+    }
+    if (hoveredOutputAttributeId === attribute.id) {
+      clearHoveredOutputAttributeId();
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (relatedTransformationIds.length === 0) {
+        return;
+      }
+      const relatedSet = new Set(relatedTransformationIds);
+      const shouldClear =
+        highlightedTransformationIds.length > 0 &&
+        highlightedTransformationIds.every((id) => relatedSet.has(id));
+      if (shouldClear) {
+        clearHoveredTransformationIds();
+      }
+      if (hoveredOutputAttributeId === attribute.id) {
+        clearHoveredOutputAttributeId();
+      }
+    };
+  }, [
+    clearHoveredTransformationIds,
+    highlightedTransformationIds,
+    relatedTransformationIds,
+    hoveredOutputAttributeId,
+    clearHoveredOutputAttributeId,
+  ]);
+
   return (
     <div
-      className={`flex items-center py-1.5 mb-0.5 transition-colors hover:bg-gray-200 leading-none select-none ${getBackgroundClass()}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className={`flex items-center py-1.5 mb-0.5 transition-colors leading-none select-none hover:bg-gray-200 ${getBackgroundClass()} ${highlightBackgroundClass}`}
+      onMouseEnter={handlePointerEnter}
+      onMouseLeave={handlePointerLeave}
     >
       {/* Key - fixed width container with indented content */}
       <div className="w-[260px] flex-shrink-0 flex items-center pr-4 leading-none">

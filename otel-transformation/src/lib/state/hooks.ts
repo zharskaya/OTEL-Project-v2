@@ -60,11 +60,37 @@ export function useHighlightedTransformationIds() {
 export function useTransformationHighlightActions() {
   const setHoveredTransformationIds = useTransformationStore((state) => state.setHoveredTransformationIds);
   const clearHoveredTransformationIds = useTransformationStore((state) => state.clearHoveredTransformationIds);
+  const setHoveredInputAttributeId = useTransformationStore((state) => state.setHoveredInputAttributeId);
+  const setHoveredOutputAttributeId = useTransformationStore((state) => state.setHoveredOutputAttributeId);
+  const clearHoveredInputAttributeId = () => setHoveredInputAttributeId(null);
+  const clearHoveredOutputAttributeId = () => setHoveredOutputAttributeId(null);
 
   return useMemo(
-    () => ({ setHoveredTransformationIds, clearHoveredTransformationIds }),
-    [setHoveredTransformationIds, clearHoveredTransformationIds]
+    () => ({
+      setHoveredTransformationIds,
+      clearHoveredTransformationIds,
+      setHoveredInputAttributeId,
+      setHoveredOutputAttributeId,
+      clearHoveredInputAttributeId,
+      clearHoveredOutputAttributeId,
+    }),
+    [
+      setHoveredTransformationIds,
+      clearHoveredTransformationIds,
+      setHoveredInputAttributeId,
+      setHoveredOutputAttributeId,
+      clearHoveredInputAttributeId,
+      clearHoveredOutputAttributeId,
+    ]
   );
+}
+
+export function useHoveredInputAttributeId() {
+  return useTransformationStore((state) => state.hoveredInputAttributeId);
+}
+
+export function useHoveredOutputAttributeId() {
+  return useTransformationStore((state) => state.hoveredOutputAttributeId);
 }
 
 export function useTransformationsBySection(sectionId: string) {

@@ -12,6 +12,8 @@ interface TransformationStore {
   lastExecutionResult: TransformationResult | null;
   attributeOrder: Map<string, string[]>; // sectionId -> ordered attribute KEYS (not IDs)
   hoveredTransformationIds: string[];
+  hoveredInputAttributeId: string | null;
+  hoveredOutputAttributeId: string | null;
   activeRange: {
     start: number;
     end: number;
@@ -30,6 +32,8 @@ interface TransformationStore {
   setAttributeOrder: (sectionId: string, order: string[]) => void;
   setHoveredTransformationIds: (ids: string[]) => void;
   clearHoveredTransformationIds: () => void;
+  setHoveredInputAttributeId: (id: string | null) => void;
+  setHoveredOutputAttributeId: (id: string | null) => void;
   setActiveRange: (range: { start: number; end: number }) => void;
 
   // Selectors
@@ -44,6 +48,8 @@ export const useTransformationStore = create<TransformationStore>(
     lastExecutionResult: null,
     attributeOrder: new Map(),
     hoveredTransformationIds: [],
+    hoveredInputAttributeId: null,
+    hoveredOutputAttributeId: null,
     activeRange: {
       start: 0,
       end: 0,
@@ -137,6 +143,9 @@ export const useTransformationStore = create<TransformationStore>(
       set({ hoveredTransformationIds: Array.from(new Set(ids)) }),
 
     clearHoveredTransformationIds: () => set({ hoveredTransformationIds: [] }),
+
+    setHoveredInputAttributeId: (id) => set({ hoveredInputAttributeId: id }),
+    setHoveredOutputAttributeId: (id) => set({ hoveredOutputAttributeId: id }),
 
     setActiveRange: (range) =>
       set((state) => {

@@ -74,7 +74,7 @@ export default function Home() {
     const currentSignature = serializeTransformations(transformations);
     if (currentSignature !== lastExecutedSignature) {
       if (!hasChanges) {
-        setHasChanges(true);
+      setHasChanges(true);
       }
     } else if (hasChanges) {
       setHasChanges(false);
