@@ -330,12 +330,6 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       onDragEnd={handleDragEnd}
     >
       <div>
-        {rawOttlCount > 0 && (
-          <div className="flex items-center justify-between gap-4 pl-8 pr-4 mb-4 py-1 bg-gray-200">
-            <span className="text-xs font-semibold text-gray-900">Additional raw OTTL transformations</span>
-            <span className="text-xs font-medium uppercase text-gray-700">{rawOttlCount} {rawOttlCount === 1 ? 'change' : 'changes'}</span>
-          </div>
-        )}
         {tree.sections.map((section) => (
           <TreeSection 
             key={section.id} 

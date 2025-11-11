@@ -15,6 +15,38 @@ import {
   useLastExecutionResult,
   useTransformationActions,
 } from '@/lib/state/hooks';
+import type { Transformation } from '@/types/transformation-types';
+
+function serializeTransformations(transformations: Transformation[]): string {
+  return JSON.stringify(
+    [...transformations]
+      .sort((first, second) => {
+        if (first.order !== second.order) {
+          return first.order - second.order;
+        }
+        return first.id.localeCompare(second.id);
+      })
+      .map(
+        ({
+          id,
+          type,
+          sectionId,
+          status,
+          order,
+          pairedTransformationId,
+          params,
+        }) => ({
+          id,
+          type,
+          sectionId,
+          status,
+          order,
+          pairedTransformationId,
+          params,
+        })
+      )
+  );
+}
 
 export default function Home() {
   const inputPanelWidth = 44;
@@ -33,21 +65,28 @@ export default function Home() {
   const { executeTransformations } = useTransformationActions();
 
   const [hasChanges, setHasChanges] = useState(false);
+  const [lastExecutedSignature, setLastExecutedSignature] = useState(() =>
+    serializeTransformations(transformations)
+  );
 
   // Track if transformations have changed since last run
   useEffect(() => {
-    if (lastResult === null && transformations.length > 0) {
-      setHasChanges(true);
-    } else if (lastResult !== null && transformations.length !== lastResult.appliedTransformations) {
-      setHasChanges(true);
+    const currentSignature = serializeTransformations(transformations);
+    if (currentSignature !== lastExecutedSignature) {
+      if (!hasChanges) {
+        setHasChanges(true);
+      }
+    } else if (hasChanges) {
+      setHasChanges(false);
     }
-  }, [transformations, lastResult]);
+  }, [hasChanges, lastExecutedSignature, transformations]);
 
   // Handle Run button
   const handleRun = useCallback(() => {
     const result = executeTransformations(SAMPLE_TELEMETRY_DATA.resourceSpans[0]);
+    setLastExecutedSignature(serializeTransformations(transformations));
     setHasChanges(false);
-  }, [executeTransformations]);
+  }, [executeTransformations, transformations]);
 
   // Keyboard shortcut: Cmd+Enter or Ctrl+Enter to run
   useEffect(() => {

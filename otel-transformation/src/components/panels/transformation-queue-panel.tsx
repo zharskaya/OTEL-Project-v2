@@ -258,11 +258,23 @@ export function TransformationQueuePanel({
     setIsHydrated(true);
   }, []);
 
+  const enabledTransformationsCount = useMemo(
+    () =>
+      transformations.filter(
+        (transformation) => transformation.status === TransformationStatus.ACTIVE
+      ).length,
+    [transformations]
+  );
+  const headerLabel =
+    transformations.length === 0
+      ? 'Transformations (0)'
+      : `Transformations (${enabledTransformationsCount}/${transformations.length})`;
+
   if (!isHydrated) {
     return (
       <div className="flex h-full flex-col">
         <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
-          <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">Transformations</h2>
+          <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">{headerLabel}</h2>
           <div className="flex items-center gap-2">
             <TooltipProvider>
               <Tooltip>
@@ -315,7 +327,7 @@ export function TransformationQueuePanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
-        <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">Transformations</h2>
+        <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">{headerLabel}</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>
             <Tooltip>
@@ -528,7 +540,7 @@ function QueueItem({
       <div className="relative flex min-w-0 flex-1 items-center pr-12">
         {details.isRawOTTL ? (
           <div className={`flex min-w-0 flex-1 items-center gap-2 text-xs ${textColorClass}`}>
-            <SquareTerminal className="h-4 w-4 text-gray-500" />
+            <SquareTerminal className={`h-4 w-4 ${isVisible ? 'text-gray-500' : 'text-gray-400 opacity-30'}`} />
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
