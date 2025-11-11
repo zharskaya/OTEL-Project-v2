@@ -2,30 +2,11 @@
 
 import {
   useCallback,
-  useLayoutEffect,
+  useEffect,
   useMemo,
-  useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
 } from 'react';
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverEvent,
-  DragStartEvent,
-  DragCancelEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  verticalListSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import {
   Tooltip,
   TooltipContent,
@@ -42,48 +23,21 @@ import {
 import {
   Transformation,
   TransformationType,
+  TransformationStatus,
   type RawOTTLParams,
   type AddStaticParams,
   type DeleteParams,
 } from '@/types/transformation-types';
-import { GripVertical, Trash2, SquareTerminal, PenLine } from 'lucide-react';
+import {
+  GripVertical,
+  Trash2,
+  SquareTerminal,
+  PenLine,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
-
-function countTransformationsBeforeIndex(
-  items: string[],
-  index: number,
-  startMarkerId: string,
-  endMarkerId: string
-): number {
-  let count = 0;
-  for (let position = 0; position < index; position += 1) {
-    const itemId = items[position];
-    if (itemId !== startMarkerId && itemId !== endMarkerId) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function normalizeRange(
-  start: number,
-  end: number,
-  transformationCount: number
-): { start: number; end: number } {
-  if (transformationCount <= 0) {
-    return { start: 0, end: 0 };
-  }
-
-  const clampedStart = Math.max(0, Math.min(start, transformationCount - 1));
-  let clampedEnd = Math.max(clampedStart + 1, end);
-  clampedEnd = Math.min(clampedEnd, transformationCount);
-
-  return {
-    start: clampedStart,
-    end: clampedEnd,
-  };
-}
 
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
@@ -93,9 +47,7 @@ export function TransformationQueuePanel({
   sections,
 }: TransformationQueuePanelProps) {
   const transformations = useTransformations();
-  const { removeTransformation, reorderTransformations, setActiveRange } = useTransformationActions();
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [dropIndicatorId, setDropIndicatorId] = useState<string | null>(null);
+  const { removeTransformation, updateTransformation, setActiveRange } = useTransformationActions();
   const [rawOttlEditor, setRawOttlEditor] = useState<{
     mode: 'create' | 'edit';
     sectionId: string;
@@ -111,9 +63,6 @@ export function TransformationQueuePanel({
     [transformations]
   );
 
-  const START_MARKER_ID = '__marker-start__';
-  const END_MARKER_ID = '__marker-end__';
-
   const displayTransformations = useMemo(() => {
     const skipIds = new Set<string>();
     orderedTransformations.forEach((transformation) => {
@@ -127,162 +76,22 @@ export function TransformationQueuePanel({
     return orderedTransformations.filter((transformation) => !skipIds.has(transformation.id));
   }, [orderedTransformations]);
 
-  const [boundarySlots, setBoundarySlots] = useState(() => ({
-    start: 0,
-    end: displayTransformations.length > 0 ? displayTransformations.length : 0,
-  }));
-
-  const transformationCount = displayTransformations.length;
-  const transformationIndexMap = useMemo(
+  const activeTransformationCount = useMemo(
     () =>
-      new Map(displayTransformations.map((item, index) => [item.id, index])),
+      displayTransformations.filter(
+        (transformation) => transformation.status === TransformationStatus.ACTIVE
+      ).length,
     [displayTransformations]
   );
-  const previousTransformationCountRef = useRef(transformationCount);
-  const previousTransformationIdsRef = useRef<string[]>([]);
-  const previousBoundarySlotsRef = useRef(boundarySlots);
 
-  useLayoutEffect(() => {
-    previousBoundarySlotsRef.current = boundarySlots;
-  }, [boundarySlots]);
-
-  useLayoutEffect(() => {
-    const previousCount = previousTransformationCountRef.current;
-    const previousIds = previousTransformationIdsRef.current;
-    const previousBoundary = previousBoundarySlotsRef.current;
-    const currentIds = displayTransformations.map((item) => item.id);
-
-    const removedIds = previousIds.filter((id) => !currentIds.includes(id));
-    const removedInsideRange = removedIds.reduce((accumulator, id) => {
-      const index = previousIds.indexOf(id);
-      if (index === -1) {
-        return accumulator;
-      }
-
-      if (index >= previousBoundary.start && index < previousBoundary.end) {
-        return accumulator + 1;
-      }
-
-      return accumulator;
-    }, 0);
-
-    setBoundarySlots((current) => {
-      if (transformationCount <= 1) {
-        const nextEnd = transformationCount === 0 ? 0 : 1;
-
-        if (current.start === 0 && current.end === nextEnd) {
-          return current;
-        }
-
-        return {
-          start: 0,
-          end: nextEnd,
-        };
-      }
-
-      const maxStart = Math.max(0, Math.min(current.start, transformationCount - 1));
-      const minEnd = Math.max(maxStart + 1, 1);
-      const hasGrown = transformationCount > previousCount;
-      const growth = hasGrown ? transformationCount - previousCount : 0;
-      const endWasLast = previousCount === current.end;
-      const desiredEnd = (() => {
-        if (hasGrown && endWasLast) {
-          return current.end + growth;
-        }
-
-        if (!hasGrown && removedInsideRange > 0) {
-          return current.end - removedInsideRange;
-        }
-
-        return current.end;
-      })();
-      const clampedEnd = Math.min(Math.max(desiredEnd, minEnd), transformationCount);
-
-      if (maxStart === current.start && clampedEnd === current.end) {
-        return current;
-      }
-
-      return {
-        start: maxStart,
-        end: clampedEnd,
-      };
-    });
-
-    previousTransformationCountRef.current = transformationCount;
-  }, [transformationCount]);
-
-  useLayoutEffect(() => {
+  useEffect(() => {
     setActiveRange({
-      start: boundarySlots.start,
-      end: boundarySlots.end,
+      start: 0,
+      end: activeTransformationCount,
     });
-  }, [boundarySlots, setActiveRange]);
-
-  useLayoutEffect(() => {
-    const currentIds = displayTransformations.map((item) => item.id);
-    const previousIds = previousTransformationIdsRef.current;
-
-    if (currentIds.length === 0) {
-      previousTransformationIdsRef.current = currentIds;
-      return;
-    }
-
-    const newIds = currentIds.filter((id) => !previousIds.includes(id));
-
-    const endIsLast = boundarySlots.end === currentIds.length;
-
-    if (newIds.length > 0 && endIsLast && boundarySlots.end > 0) {
-      const targetIndex = Math.min(
-        Math.max(boundarySlots.end - 1, 0),
-        currentIds.length - 1
-      );
-
-      newIds.forEach((id) => {
-        const currentIndex = currentIds.indexOf(id);
-        if (currentIndex === -1) {
-          return;
-        }
-
-        if (currentIndex <= targetIndex) {
-          return;
-        }
-
-        reorderTransformations(id, targetIndex);
-      });
-    }
-
-    previousTransformationIdsRef.current = currentIds;
-  }, [displayTransformations, boundarySlots.end, reorderTransformations]);
+  }, [activeTransformationCount, setActiveRange]);
 
   const defaultSectionId = sections[0]?.id ?? '';
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 4 },
-    })
-  );
-
-  const sortableItems = useMemo(() => {
-    if (transformationCount <= 1) {
-      return displayTransformations.map((item) => item.id);
-    }
-
-    const items: string[] = [];
-
-    for (let index = 0; index < transformationCount; index += 1) {
-      if (index === boundarySlots.start) {
-        items.push(START_MARKER_ID);
-      }
-
-      items.push(displayTransformations[index].id);
-
-      if (index + 1 === boundarySlots.end) {
-        items.push(END_MARKER_ID);
-      }
-    }
-
-    return items;
-  }, [displayTransformations, boundarySlots, transformationCount, START_MARKER_ID, END_MARKER_ID]);
 
   const handleAddRawOttl = useCallback(() => {
     if (!defaultSectionId) {
@@ -308,268 +117,16 @@ export function TransformationQueuePanel({
     setRawOttlEditor(null);
   }, []);
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveId(String(event.active.id));
-    setDropIndicatorId(String(event.active.id));
-  }, []);
-
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { over } = event;
-    setDropIndicatorId(over ? String(over.id) : null);
-  }, []);
-
-  const handleStartMarkerDrop = useCallback(
-    (overId: string) => {
-      if (transformationCount <= 1 || overId === START_MARKER_ID) {
-        return;
-      }
-
-      const activeIndex = sortableItems.indexOf(START_MARKER_ID);
-      const overIndex = sortableItems.indexOf(overId);
-
-      if (activeIndex === -1 || overIndex === -1) {
-        return;
-      }
-
-      const reordered = arrayMove(sortableItems, activeIndex, overIndex);
-      const markerIndex = reordered.indexOf(START_MARKER_ID);
-
-      if (markerIndex === -1) {
-        return;
-      }
-
-      const transformationsBefore = countTransformationsBeforeIndex(
-        reordered,
-        markerIndex,
-        START_MARKER_ID,
-        END_MARKER_ID
-      );
-
-      setBoundarySlots((current) => {
-        const desiredStart = Math.max(
-          0,
-          Math.min(transformationsBefore, transformationCount - 1)
-        );
-        const normalized = normalizeRange(
-          desiredStart,
-          current.end,
-          transformationCount
-        );
-
-        if (
-          normalized.start === current.start &&
-          normalized.end === current.end
-        ) {
-          return current;
-        }
-
-        return normalized;
-      });
+  const handleToggleVisibility = useCallback(
+    (transformation: Transformation) => {
+      const nextStatus =
+        transformation.status === TransformationStatus.ACTIVE
+          ? TransformationStatus.DRAFT
+          : TransformationStatus.ACTIVE;
+      updateTransformation(transformation.id, { status: nextStatus });
     },
-    [setBoundarySlots, sortableItems, transformationCount]
+    [updateTransformation]
   );
-
-  const handleEndMarkerDrop = useCallback(
-    (overId: string) => {
-      if (transformationCount <= 1 || overId === END_MARKER_ID) {
-        return;
-      }
-
-      const activeIndex = sortableItems.indexOf(END_MARKER_ID);
-      const overIndex = sortableItems.indexOf(overId);
-
-      if (activeIndex === -1 || overIndex === -1) {
-        return;
-      }
-
-      const reordered = arrayMove(sortableItems, activeIndex, overIndex);
-      const markerIndex = reordered.indexOf(END_MARKER_ID);
-
-      if (markerIndex === -1) {
-        return;
-      }
-
-      const transformationsBefore = countTransformationsBeforeIndex(
-        reordered,
-        markerIndex,
-        START_MARKER_ID,
-        END_MARKER_ID
-      );
-
-      setBoundarySlots((current) => {
-        const desiredEnd = Math.max(
-          0,
-          Math.min(transformationsBefore, transformationCount)
-        );
-        const normalized = normalizeRange(
-          current.start,
-          desiredEnd,
-          transformationCount
-        );
-
-        if (
-          normalized.start === current.start &&
-          normalized.end === current.end
-        ) {
-          return current;
-        }
-
-        return normalized;
-      });
-    },
-    [setBoundarySlots, sortableItems, transformationCount]
-  );
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over) {
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      const activeId = String(active.id);
-      const overId = String(over.id);
-
-      const sourceIndex = orderedTransformations.findIndex(
-        (item) => item.id === activeId
-      );
-
-      if (activeId === START_MARKER_ID) {
-        handleStartMarkerDrop(overId);
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      if (activeId === END_MARKER_ID) {
-        handleEndMarkerDrop(overId);
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      if (activeId === overId) {
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      if (sourceIndex === -1) {
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      const droppedOnStartMarker = overId === START_MARKER_ID;
-      const droppedOnEndMarker = overId === END_MARKER_ID;
-
-      let destinationIndex: number;
-
-      if (droppedOnStartMarker) {
-        destinationIndex =
-          boundarySlots.start > 0 ? boundarySlots.start - 1 : 0;
-      } else if (droppedOnEndMarker) {
-        const lastIndex = Math.max(orderedTransformations.length - 1, 0);
-        destinationIndex = Math.min(boundarySlots.end, lastIndex);
-      } else {
-        destinationIndex = orderedTransformations.findIndex(
-          (item) => item.id === overId
-        );
-      }
-
-      if (destinationIndex === -1) {
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      const safeDestinationIndex = Math.max(
-        0,
-        Math.min(destinationIndex, Math.max(orderedTransformations.length - 1, 0))
-      );
-
-      const orderedIds = orderedTransformations.map((item) => item.id);
-      const updatedOrderIds =
-        orderedIds.length === 0
-          ? orderedIds
-          : arrayMove(orderedIds, sourceIndex, safeDestinationIndex);
-      const destinationIndexAfterMove =
-        updatedOrderIds.length === 0
-          ? 0
-          : updatedOrderIds.indexOf(activeId);
-
-      const sourceInside =
-        sourceIndex >= boundarySlots.start &&
-        sourceIndex < boundarySlots.end;
-      const destinationInside =
-        destinationIndexAfterMove >= boundarySlots.start &&
-        destinationIndexAfterMove < boundarySlots.end;
-
-      if (
-        sourceInside &&
-        !destinationInside &&
-        boundarySlots.end - boundarySlots.start <= 1
-      ) {
-        setActiveId(null);
-        setDropIndicatorId(null);
-        return;
-      }
-
-      let nextStart = boundarySlots.start;
-      let nextEnd = boundarySlots.end;
-
-      const enteringRange = !sourceInside && destinationInside;
-      const leavingRange = sourceInside && !destinationInside;
-      const movedAboveStart = leavingRange && destinationIndexAfterMove < boundarySlots.start;
-
-      if (enteringRange) {
-        if (nextEnd < transformationCount) {
-          nextEnd += 1;
-        } else if (nextStart > 0) {
-          nextStart -= 1;
-        }
-      }
-
-      if (leavingRange) {
-        if (movedAboveStart) {
-          nextStart += 1;
-        } else {
-          nextEnd -= 1;
-        }
-      }
-
-      const normalizedRange = normalizeRange(
-        nextStart,
-        nextEnd,
-        transformationCount
-      );
-
-      setBoundarySlots(normalizedRange);
-
-      reorderTransformations(String(active.id), safeDestinationIndex);
-
-      setActiveId(null);
-      setDropIndicatorId(null);
-    },
-    [
-      orderedTransformations,
-      reorderTransformations,
-      handleStartMarkerDrop,
-      handleEndMarkerDrop,
-      START_MARKER_ID,
-      END_MARKER_ID,
-      boundarySlots,
-      setBoundarySlots,
-      transformationCount,
-    ]
-  );
-
-  const handleDragCancel = useCallback((_: DragCancelEvent) => {
-    setActiveId(null);
-    setDropIndicatorId(null);
-  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -598,106 +155,61 @@ export function TransformationQueuePanel({
 
       <div className="flex-1 overflow-hidden bg-gray-50">
         <ScrollArea className="h-full">
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-            onDragCancel={handleDragCancel}
-          >
-            <SortableContext
-              items={sortableItems}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-1 p-1">
-                {rawOttlEditor?.mode === 'create' && (
-                  <div className="mb-1 rounded-md bg-gray-200 p-1">
-                    <RawOTTLForm
-                      sectionId={rawOttlEditor.sectionId}
-                      initialStatement={rawOttlEditor.statement}
-                      onCancel={handleRawOttlCancel}
-                      onSave={handleRawOttlSave}
-                    />
-                  </div>
-                )}
-                {displayTransformations.length === 0 && !rawOttlEditor ? (
-                  <div className="p-4 text-center text-sm text-gray-500">
-                    <p className="font-semibold pb-1">No transformations yet.</p>
-                    <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
-                  </div>
-                ) : (
-                  sortableItems.map((itemId) => {
-                    if (itemId === START_MARKER_ID) {
-                      return displayTransformations.length > 1 ? (
-                        <QueueBoundaryMarker
-                          key={itemId}
-                          id={itemId}
-                          label="Start"
-                        />
-                      ) : null;
-                    }
-                    if (itemId === END_MARKER_ID) {
-                      return displayTransformations.length > 1 ? (
-                        <QueueBoundaryMarker
-                          key={itemId}
-                          id={itemId}
-                          label="End"
-                        />
-                      ) : null;
-                    }
-
-                    const transformation = displayTransformations.find((item) => item.id === itemId);
-                    if (!transformation) {
-                      return null;
-                    }
-
-                    const transformationIndex =
-                      transformationIndexMap.get(transformation.id) ?? -1;
-                    const isWithinRange =
-                      transformationIndex >= boundarySlots.start &&
-                      transformationIndex < boundarySlots.end;
-                    if (
-                      rawOttlEditor?.mode === 'edit' &&
-                      rawOttlEditor.transformationId === transformation.id
-                    ) {
-                      return (
-                        <div key={transformation.id} className="mb-0.5 rounded-md bg-gray-200 p-1">
-                          <RawOTTLForm
-                            sectionId={rawOttlEditor.sectionId}
-                            transformationId={transformation.id}
-                            initialStatement={rawOttlEditor.statement}
-                            onCancel={handleRawOttlCancel}
-                            onSave={handleRawOttlSave}
-                          />
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <QueueItem
-                        key={transformation.id}
-                        transformation={transformation}
-                        onRemove={removeTransformation}
-                        showDropIndicator={
-                          dropIndicatorId === transformation.id && transformation.id !== activeId
-                        }
-                        isWithinRange={isWithinRange}
-                        onEditRawOttl={(rawTransformation) => {
-                          const params = rawTransformation.params as RawOTTLParams;
-                          setRawOttlEditor({
-                            mode: 'edit',
-                            sectionId: rawTransformation.sectionId,
-                            transformationId: rawTransformation.id,
-                            statement: params.statement,
-                          });
-                        }}
-                      />
-                    );
-                  })
-                )}
+          <div className="space-y-1 p-1">
+            {rawOttlEditor?.mode === 'create' && (
+              <div className="mb-1 rounded-md bg-gray-200 p-1">
+                <RawOTTLForm
+                  sectionId={rawOttlEditor.sectionId}
+                  initialStatement={rawOttlEditor.statement}
+                  onCancel={handleRawOttlCancel}
+                  onSave={handleRawOttlSave}
+                />
               </div>
-            </SortableContext>
-          </DndContext>
+            )}
+            {displayTransformations.length === 0 && !rawOttlEditor ? (
+              <div className="p-4 text-center text-sm text-gray-500">
+                <p className="font-semibold pb-1">No transformations yet.</p>
+                <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
+              </div>
+            ) : (
+              displayTransformations.map((transformation) => {
+                if (
+                  rawOttlEditor?.mode === 'edit' &&
+                  rawOttlEditor.transformationId === transformation.id
+                ) {
+                  return (
+                    <div key={transformation.id} className="mb-0.5 rounded-md bg-gray-200 p-1">
+                      <RawOTTLForm
+                        sectionId={rawOttlEditor.sectionId}
+                        transformationId={transformation.id}
+                        initialStatement={rawOttlEditor.statement}
+                        onCancel={handleRawOttlCancel}
+                        onSave={handleRawOttlSave}
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <QueueItem
+                    key={transformation.id}
+                    transformation={transformation}
+                    onRemove={removeTransformation}
+                    onToggleVisibility={handleToggleVisibility}
+                    onEditRawOttl={(rawTransformation) => {
+                      const params = rawTransformation.params as RawOTTLParams;
+                      setRawOttlEditor({
+                        mode: 'edit',
+                        sectionId: rawTransformation.sectionId,
+                        transformationId: rawTransformation.id,
+                        statement: params.statement,
+                      });
+                    }}
+                  />
+                );
+              })
+            )}
+          </div>
         </ScrollArea>
       </div>
     </div>
@@ -715,30 +227,21 @@ interface RowDetails {
 interface QueueItemProps {
   transformation: Transformation;
   onRemove: (id: string) => void;
-  showDropIndicator: boolean;
+  onToggleVisibility: (transformation: Transformation) => void;
   onEditRawOttl?: (transformation: Transformation) => void;
-  isWithinRange: boolean;
 }
 
 function QueueItem({
   transformation,
   onRemove,
-  showDropIndicator,
+  onToggleVisibility,
   onEditRawOttl,
-  isWithinRange,
 }: QueueItemProps) {
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
-    useSortable({ id: transformation.id });
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const highlightedTransformationIds = useHighlightedTransformationIds();
   const { setHoveredTransformationIds, clearHoveredTransformationIds } =
     useTransformationHighlightActions();
-
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
 
   const details = getRowDetails(transformation);
   const labelText = details.action;
@@ -746,16 +249,21 @@ function QueueItem({
   const descriptionContent = details.description;
   const actionClassName = details.actionClassName;
   const isHighlighted = highlightedTransformationIds.includes(transformation.id);
-  const labelOpacityClass = isWithinRange ? '' : 'opacity-20';
+  const isVisible = transformation.status === TransformationStatus.ACTIVE;
+  const labelOpacityClass = isVisible ? '' : 'opacity-40';
   const baseBackgroundClass = isHighlighted
     ? 'bg-gray-300'
-    : isWithinRange
+    : isVisible
       ? 'bg-gray-200/60'
       : 'bg-gray-100';
-  const dragStateClass = isDragging ? 'shadow-sm ring-1 ring-gray-200' : '';
+  const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
 
   const showActions = isHovered || isFocused;
   const isRawOttlTransformation = transformation.type === TransformationType.RAW_OTTL;
+
+  const handleToggleVisibility = () => {
+    onToggleVisibility(transformation);
+  };
 
   const handleEditRawOttl = () => {
     if (!isRawOttlTransformation || !onEditRawOttl) {
@@ -766,9 +274,7 @@ function QueueItem({
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass} ${dragStateClass}`}
+      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass}`}
       onMouseEnter={() => {
         setIsHovered(true);
         setHoveredTransformationIds([transformation.id]);
@@ -786,34 +292,23 @@ function QueueItem({
         clearHoveredTransformationIds();
       }}
     >
-      {showDropIndicator && (
-        <span className="absolute left-2 right-2 top-0 h-0.5 bg-blue-500" aria-hidden="true" />
-      )}
-      <Tooltip open={isDragging ? false : undefined}>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="flex h-6 w-6 items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing rounded focus:outline-none focus:ring-2 focus:ring-gray-500/40"
-            aria-label="Drag to reorder transformation"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent className="bg-gray-900 text-white border-none">
-          <p>Drag to reorder transformations</p>
-        </TooltipContent>
-      </Tooltip>
-      <div className="relative flex min-w-0 flex-1 items-center pr-10">
+      <div
+        className={`flex h-6 w-6 items-center justify-center text-gray-400 transition-opacity ${
+          showActions ? 'opacity-100' : 'opacity-0'
+        } pointer-events-none`}
+        aria-hidden="true"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+      <div className="relative flex min-w-0 flex-1 items-center pr-12">
         {details.isRawOTTL ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
+          <div className={`flex min-w-0 flex-1 items-center gap-2 text-xs ${textColorClass}`}>
             <SquareTerminal className="h-4 w-4 text-gray-500" />
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className="font-mono break-words text-left text-gray-800 cursor-pointer"
+                    className={`font-mono break-words text-left ${isVisible ? 'text-gray-800' : 'text-gray-500'} cursor-pointer`}
                     onClick={handleEditRawOttl}
                   >
                     {descriptionContent}
@@ -834,11 +329,13 @@ function QueueItem({
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               {sectionText ? (
-                <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <span className={`min-w-0 truncate text-xs font-semibold uppercase tracking-wide ${isVisible ? 'text-gray-500' : 'text-gray-400/80'}`}>
                   {sectionText}
                 </span>
               ) : null}
-              <span className="font-mono text-xs text-gray-600 break-words">{descriptionContent}</span>
+              <span className={`font-mono text-xs break-words ${textColorClass}`}>
+                {descriptionContent}
+              </span>
             </div>
           </div>
         )}
@@ -848,6 +345,27 @@ function QueueItem({
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleToggleVisibility}
+                className={`rounded-md p-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  isVisible
+                    ? 'bg-gray-900 text-white hover:bg-gray-700'
+                    : 'bg-white text-gray-700 hover:bg-gray-200 border border-gray-200'
+                }`}
+                aria-label={isVisible ? 'Hide transformation' : 'Show transformation'}
+              >
+                {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{isVisible ? 'Hide transformation' : 'Show transformation'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         {isRawOttlTransformation && onEditRawOttl && (
           <TooltipProvider>
             <Tooltip>
@@ -885,42 +403,6 @@ function QueueItem({
           </Tooltip>
         </TooltipProvider>
       </div>
-    </div>
-  );
-}
-
-interface QueueBoundaryMarkerProps {
-  id: string;
-  label: string;
-}
-
-function QueueBoundaryMarker({ id, label }: QueueBoundaryMarkerProps) {
-  const { setNodeRef, attributes, listeners, transform, transition, isDragging } =
-    useSortable({ id });
-
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`relative group flex items-center gap-2 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 transition-colors ${
-        isDragging ? 'bg-gray-200' : ''
-      }`}
-    >
-      <span className="h-[1px] w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
-      <button
-        type="button"
-        className="flex items-center justify-center whitespace-nowrap rounded px-1 py-0.5 uppercase text-gray-900 bg:bg-gray-400 cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 group-hover:bg-blue-500 group-hover:text-white"
-        aria-label={`${label} boundary`}
-        {...attributes}
-        {...listeners}
-      >
-        {label}
-      </button>
-      <span className="h-[1px] w-full bg-gray-300 transition-colors group-hover:bg-blue-500" aria-hidden="true" />
     </div>
   );
 }

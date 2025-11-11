@@ -3,6 +3,7 @@ import {
   Transformation,
   TransformationResult,
   TransformationType,
+  TransformationStatus,
 } from '@/types/transformation-types';
 import { TelemetryParser } from '@/lib/telemetry/telemetry-parser';
 
@@ -26,8 +27,12 @@ export class TransformationEngine {
       // Track modifications for highlighting
       const modifications = new Map<string, any[]>();
 
+      const activeTransformations = transformations.filter(
+        (transformation) => transformation.status === TransformationStatus.ACTIVE
+      );
+
       // Apply transformations sequentially
-      for (const transformation of transformations) {
+      for (const transformation of activeTransformations) {
         transformedData = this.applyTransformation(transformedData, transformation, modifications);
       }
 
@@ -35,11 +40,11 @@ export class TransformationEngine {
       const transformedTree = TelemetryParser.parse([transformedData]);
       
       // Apply modification metadata to the tree
-      this.applyModificationsToTree(transformedTree, modifications, transformations);
+      this.applyModificationsToTree(transformedTree, modifications, activeTransformations);
       
       // Apply custom attribute ordering to match INPUT panel
       if (attributeOrder) {
-        this.applyCustomOrder(transformedTree, attributeOrder, transformations);
+        this.applyCustomOrder(transformedTree, attributeOrder, activeTransformations);
       }
 
       const endTime = performance.now();
@@ -47,7 +52,7 @@ export class TransformationEngine {
       return {
         transformedData,
         transformedTree,
-        appliedTransformations: transformations.length,
+        appliedTransformations: activeTransformations.length,
         executionTime: endTime - startTime,
         failedTransformations: [],
         warnings: [],
@@ -60,8 +65,8 @@ export class TransformationEngine {
         appliedTransformations: 0,
         executionTime: endTime - startTime,
         failedTransformations: [{
-          transformationId: 'unknown',
-          type: transformations[0]?.type || 'add-static' as any,
+          transformationId: transformations[0]?.id ?? 'unknown',
+          type: transformations[0]?.type || TransformationType.ADD_STATIC,
           message: error instanceof Error ? error.message : 'Unknown error',
         }],
         warnings: [],
