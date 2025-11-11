@@ -5,8 +5,23 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react';
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Tooltip,
   TooltipContent,
@@ -29,12 +44,12 @@ import {
   type DeleteParams,
 } from '@/types/transformation-types';
 import {
-  GripVertical,
   Trash2,
   SquareTerminal,
   PenLine,
   Eye,
   EyeOff,
+  GripVertical,
 } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
@@ -47,7 +62,12 @@ export function TransformationQueuePanel({
   sections,
 }: TransformationQueuePanelProps) {
   const transformations = useTransformations();
-  const { removeTransformation, updateTransformation, setActiveRange } = useTransformationActions();
+  const {
+    removeTransformation,
+    updateTransformation,
+    reorderTransformations,
+    setActiveRange,
+  } = useTransformationActions();
   const [rawOttlEditor, setRawOttlEditor] = useState<{
     mode: 'create' | 'edit';
     sectionId: string;
@@ -93,6 +113,44 @@ export function TransformationQueuePanel({
 
   const defaultSectionId = sections[0]?.id ?? '';
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    })
+  );
+
+  const sortableIds = useMemo(
+    () => displayTransformations.map((transformation) => transformation.id),
+    [displayTransformations]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) {
+        return;
+      }
+
+      const activeIndex = orderedTransformations.findIndex(
+        (transformation) => transformation.id === active.id
+      );
+      const overIndex = orderedTransformations.findIndex(
+        (transformation) => transformation.id === over.id
+      );
+
+      if (activeIndex === -1 || overIndex === -1) {
+        return;
+      }
+
+      const orderedIds = orderedTransformations.map((transformation) => transformation.id);
+      const updatedOrderIds = arrayMove(orderedIds, activeIndex, overIndex);
+      const nextIndex = updatedOrderIds.indexOf(String(active.id));
+
+      reorderTransformations(String(active.id), nextIndex);
+    },
+    [orderedTransformations, reorderTransformations]
+  );
+
   const handleAddRawOttl = useCallback(() => {
     if (!defaultSectionId) {
       return;
@@ -131,7 +189,7 @@ export function TransformationQueuePanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
-        <h2 className="font-semibold text-xs uppercase text-gray-900">Transformation queue</h2>
+        <h2 className="font-semibold text-xs uppercase tracking-wide text-gray-900">Transformations</h2>
         <div className="flex items-center gap-2">
           <TooltipProvider>
             <Tooltip>
@@ -153,7 +211,7 @@ export function TransformationQueuePanel({
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden bg-gray-50">
+      <div className="flex-1 overflow-hidden bg-white">
         <ScrollArea className="h-full">
           <div className="space-y-1 p-1">
             {rawOttlEditor?.mode === 'create' && (
@@ -172,42 +230,47 @@ export function TransformationQueuePanel({
                 <p>Choose an attribute in the Input panel to transform, or add a raw OTTL rule.</p>
               </div>
             ) : (
-              displayTransformations.map((transformation) => {
-                if (
-                  rawOttlEditor?.mode === 'edit' &&
-                  rawOttlEditor.transformationId === transformation.id
-                ) {
-                  return (
-                    <div key={transformation.id} className="mb-0.5 rounded-md bg-gray-200 p-1">
-                      <RawOTTLForm
-                        sectionId={rawOttlEditor.sectionId}
-                        transformationId={transformation.id}
-                        initialStatement={rawOttlEditor.statement}
-                        onCancel={handleRawOttlCancel}
-                        onSave={handleRawOttlSave}
-                      />
-                    </div>
-                  );
-                }
+              <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+                <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+                  {displayTransformations.map((transformation) => {
+                    if (
+                      rawOttlEditor?.mode === 'edit' &&
+                      rawOttlEditor.transformationId === transformation.id
+                    ) {
+                      return (
+                        <RawOttlEditorItem
+                          key={transformation.id}
+                          transformation={transformation}
+                          editor={{
+                            sectionId: rawOttlEditor.sectionId,
+                            statement: rawOttlEditor.statement,
+                          }}
+                          onCancel={handleRawOttlCancel}
+                          onSave={handleRawOttlSave}
+                        />
+                      );
+                    }
 
-                return (
-                  <QueueItem
-                    key={transformation.id}
-                    transformation={transformation}
-                    onRemove={removeTransformation}
-                    onToggleVisibility={handleToggleVisibility}
-                    onEditRawOttl={(rawTransformation) => {
-                      const params = rawTransformation.params as RawOTTLParams;
-                      setRawOttlEditor({
-                        mode: 'edit',
-                        sectionId: rawTransformation.sectionId,
-                        transformationId: rawTransformation.id,
-                        statement: params.statement,
-                      });
-                    }}
-                  />
-                );
-              })
+                    return (
+                      <QueueItem
+                        key={transformation.id}
+                        transformation={transformation}
+                        onRemove={removeTransformation}
+                        onToggleVisibility={handleToggleVisibility}
+                        onEditRawOttl={(rawTransformation) => {
+                          const params = rawTransformation.params as RawOTTLParams;
+                          setRawOttlEditor({
+                            mode: 'edit',
+                            sectionId: rawTransformation.sectionId,
+                            transformationId: rawTransformation.id,
+                            statement: params.statement,
+                          });
+                        }}
+                      />
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         </ScrollArea>
@@ -237,6 +300,14 @@ function QueueItem({
   onToggleVisibility,
   onEditRawOttl,
 }: QueueItemProps) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: transformation.id });
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const highlightedTransformationIds = useHighlightedTransformationIds();
@@ -255,10 +326,15 @@ function QueueItem({
     ? 'bg-gray-300'
     : isVisible
       ? 'bg-gray-200/60'
-      : 'bg-gray-100';
+      : 'bg-white';
   const textColorClass = isVisible ? 'text-gray-600' : 'text-gray-400';
+  const dragStateClass = isDragging ? 'shadow-md ring-1 ring-blue-200/60' : '';
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
-  const showActions = isHovered || isFocused;
+  const showActions = isHovered || isFocused || isDragging;
   const isRawOttlTransformation = transformation.type === TransformationType.RAW_OTTL;
 
   const handleToggleVisibility = () => {
@@ -274,7 +350,11 @@ function QueueItem({
 
   return (
     <div
-      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass}`}
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass} ${dragStateClass} cursor-grab active:cursor-grabbing`}
       onMouseEnter={() => {
         setIsHovered(true);
         setHoveredTransformationIds([transformation.id]);
@@ -403,6 +483,55 @@ function QueueItem({
           </Tooltip>
         </TooltipProvider>
       </div>
+    </div>
+  );
+}
+
+interface RawOttlEditorItemProps {
+  transformation: Transformation;
+  editor: {
+    sectionId: string;
+    statement: string;
+  };
+  onCancel: () => void;
+  onSave: (id: string, statement: string) => void;
+}
+
+function RawOttlEditorItem({
+  transformation,
+  editor,
+  onCancel,
+  onSave,
+}: RawOttlEditorItemProps) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: transformation.id, disabled: true });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+  const dragStateClass = isDragging ? 'shadow-md ring-1 ring-blue-200/60' : '';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`mb-0.5 rounded-md bg-gray-200 p-1 cursor-default ${dragStateClass}`}
+    >
+      <RawOTTLForm
+        sectionId={editor.sectionId}
+        transformationId={transformation.id}
+        initialStatement={editor.statement}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
     </div>
   );
 }
