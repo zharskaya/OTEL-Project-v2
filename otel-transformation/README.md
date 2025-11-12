@@ -4,7 +4,7 @@ A powerful, interactive web application for visualizing and transforming OpenTel
 
 ## 🌟 Live Demo
 
-Visit the live application: [https://zharskaya.github.io/OTEL-Project/](https://zharskaya.github.io/OTEL-Project/)
+Visit the live application: [https://zharskaya.github.io/OTEL-Project-v2/](https://zharskaya.github.io/OTEL-Project-v2/)
 
 ## 📋 Features
 
@@ -32,8 +32,8 @@ Visit the live application: [https://zharskaya.github.io/OTEL-Project/](https://
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/zharskaya/OTEL-Project.git
-cd OTEL-Project/otel-transformation
+git clone https://github.com/zharskaya/OTEL-Project-v2.git
+cd OTEL-Project-v2/otel-transformation
 ```
 
 2. Install dependencies:
@@ -176,7 +176,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📞 Support
 
-For questions, issues, or feature requests, please [open an issue](https://github.com/zharskaya/OTEL-Project/issues) on GitHub.
+For questions, issues, or feature requests, please [open an issue](https://github.com/zharskaya/OTEL-Project-v2/issues) on GitHub.
 
 ---
 

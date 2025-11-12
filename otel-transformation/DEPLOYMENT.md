@@ -27,7 +27,7 @@ The project is configured with GitHub Actions for automatic deployment. Every pu
    - Once complete, your site will be live!
 
 4. **Access Your Site**
-   - Your site will be available at: `https://zharskaya.github.io/OTEL-Project/`
+   - Your site will be available at: `https://zharskaya.github.io/OTEL-Project-v2/`
 
 ### Configuration Details
 
@@ -37,13 +37,13 @@ The deployment is configured through:
    ```typescript
    {
      output: 'export',
-     basePath: '/OTEL-Project',
+     basePath: '/OTEL-Project-v2',
      images: { unoptimized: true },
      trailingSlash: true
    }
    ```
 
-2. **.github/workflows/deploy.yml**: GitHub Actions workflow
+2. **.github/workflows/deploy-pages.yml**: GitHub Actions workflow
    - Builds the Next.js app
    - Uploads the static files
    - Deploys to GitHub Pages
@@ -209,7 +209,7 @@ GitHub Pages automatically serves content via CDN for fast global access.
 
 If you encounter issues:
 
-1. Check the [GitHub Actions logs](https://github.com/zharskaya/OTEL-Project/actions)
+1. Check the [GitHub Actions logs](https://github.com/zharskaya/OTEL-Project-v2/actions)
 2. Review [Next.js Static Export docs](https://nextjs.org/docs/app/building-your-application/deploying/static-exports)
 3. Check [GitHub Pages documentation](https://docs.github.com/en/pages)
 4. Open an issue in the repository
@@ -220,7 +220,7 @@ Before deploying, ensure:
 
 - [ ] `next.config.ts` has `output: 'export'`
 - [ ] `basePath` matches your repository name (or is empty for custom domain)
-- [ ] `.github/workflows/deploy.yml` exists
+- [ ] `.github/workflows/deploy-pages.yml` exists
 - [ ] GitHub Pages is enabled in repository settings
 - [ ] Branch protection rules allow the workflow to run
 - [ ] All tests pass locally: `npm run test`

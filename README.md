@@ -1,12 +1,12 @@
 # OTEL Transformation Project
 
-[![Deploy to GitHub Pages](https://github.com/zharskaya/OTEL-Project/actions/workflows/deploy.yml/badge.svg)](https://github.com/zharskaya/OTEL-Project/actions/workflows/deploy.yml)
+[![Deploy to GitHub Pages](https://github.com/zharskaya/OTEL-Project-v2/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/zharskaya/OTEL-Project-v2/actions/workflows/deploy-pages.yml)
 
 An interactive web application for visualizing and transforming OpenTelemetry (OTEL) data in real-time.
 
 ## 🌐 Live Application
 
-**[View Live Demo →](https://zharskaya.github.io/OTEL-Project/)**
+**[View Live Demo →](https://zharskaya.github.io/OTEL-Project-v2/)**
 
 ## 📦 Project Structure
 
@@ -19,10 +19,10 @@ This is a monorepo containing:
 
 ```bash
 # Clone the repository
-git clone https://github.com/zharskaya/OTEL-Project.git
+git clone https://github.com/zharskaya/OTEL-Project-v2.git
 
 # Navigate to the project
-cd OTEL-Project/otel-transformation
+cd OTEL-Project-v2/otel-transformation
 
 # Install dependencies
 npm install
@@ -87,9 +87,9 @@ npm run build
 
 The project uses GitHub Actions for automatic deployment to GitHub Pages:
 
-1. Push to `main` branch
+1. Push to `main-v2` branch
 2. GitHub Actions builds and deploys automatically
-3. Visit your live site at `https://zharskaya.github.io/OTEL-Project/`
+3. Visit your live site at `https://zharskaya.github.io/OTEL-Project-v2/`
 
 See [DEPLOYMENT.md](./otel-transformation/DEPLOYMENT.md) for detailed instructions.
 
