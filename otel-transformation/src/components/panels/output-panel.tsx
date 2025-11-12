@@ -22,7 +22,9 @@ export function OutputPanel({
   const appliedTransformationCount = lastExecutionResult?.appliedTransformations ?? 0;
   const appliedLabel =
     appliedTransformationCount > 0
-      ? `${appliedTransformationCount} transformations applied`
+      ? `${appliedTransformationCount} ${
+          appliedTransformationCount === 1 ? 'transformation' : 'transformations'
+        } applied`
       : 'No transformations applied';
 
   const handleDownload = () => {

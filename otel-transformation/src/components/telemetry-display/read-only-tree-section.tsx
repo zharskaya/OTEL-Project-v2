@@ -8,6 +8,8 @@ import {
   flattenGroupedAttributeTree,
   type GroupedGroupNode,
 } from './attribute-grouping';
+import { useTransformations } from '@/lib/state/hooks';
+import { TransformationType, type RenamePrefixParams, type Transformation, TransformationStatus } from '@/types/transformation-types';
 
 interface ReadOnlyTreeSectionProps {
   section: TelemetrySection;
@@ -16,6 +18,7 @@ interface ReadOnlyTreeSectionProps {
 export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
   const [isExpanded, setIsExpanded] = useState(section.expanded);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const transformations = useTransformations();
 
   const groupedAttributeNodes = React.useMemo(
     () => buildGroupedAttributeTree(section.id, section.attributes),
@@ -26,6 +29,26 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
     () => flattenGroupedAttributeTree(groupedAttributeNodes, collapsedGroups),
     [groupedAttributeNodes, collapsedGroups]
   );
+
+  const renamePrefixTransformations = React.useMemo(
+    () =>
+      transformations.filter(
+        (transformation) => transformation.type === TransformationType.RENAME_PREFIX
+      ),
+    [transformations]
+  );
+
+  const renamePrefixByGroupId = React.useMemo(() => {
+    const map = new Map<string, Transformation>();
+    renamePrefixTransformations.forEach((transformation) => {
+      const params = transformation.params as RenamePrefixParams;
+      const oldGroupId = params.groupId;
+      const newGroupId = `${transformation.sectionId}::${params.newPrefix}`;
+      map.set(oldGroupId, transformation);
+      map.set(newGroupId, transformation);
+    });
+    return map;
+  }, [renamePrefixTransformations]);
 
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
@@ -64,6 +87,7 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
                       key={`group-${groupId}`}
                       node={item.node}
                       isCollapsed={isCollapsed}
+                      renameTransformation={renamePrefixByGroupId.get(item.node.id) ?? null}
                       onToggle={() =>
                         setCollapsedGroups((previous) => ({
                           ...previous,
@@ -99,14 +123,21 @@ interface ReadOnlyAttributeGroupRowProps {
   node: GroupedGroupNode;
   isCollapsed: boolean;
   onToggle: () => void;
+  renameTransformation: Transformation | null;
 }
 
-function ReadOnlyAttributeGroupRow({ node, isCollapsed, onToggle }: ReadOnlyAttributeGroupRowProps) {
+function ReadOnlyAttributeGroupRow({ node, isCollapsed, onToggle, renameTransformation }: ReadOnlyAttributeGroupRowProps) {
+  const isRenamed = Boolean(renameTransformation);
+  const isActiveRename = renameTransformation?.status === TransformationStatus.ACTIVE;
+  const baseBackgroundClass = isRenamed ? 'bg-blue-200/30' : '';
+  const hoverBackgroundClass = isRenamed ? 'hover:bg-blue-200/60' : 'hover:bg-gray-100';
+  const rowBackgroundClass = `${baseBackgroundClass} ${hoverBackgroundClass}`;
+
   return (
     <button
       type="button"
       onClick={onToggle}
-      className="flex w-full items-center py-1.5 mb-0.5 text-left focus:outline-none transition-colors hover:bg-gray-100"
+      className={`flex w-full items-center py-1.5 mb-0.5 text-left focus:outline-none transition-colors ${rowBackgroundClass}`}
     >
       <div className="w-[260px] flex-shrink-0 flex items-start pr-4 leading-none">
         <div
@@ -114,7 +145,7 @@ function ReadOnlyAttributeGroupRow({ node, isCollapsed, onToggle }: ReadOnlyAttr
           className="flex items-center gap-2 leading-none"
         >
           <span className="text-xs text-gray-600">{isCollapsed ? '▸' : '▾'}</span>
-          <span className="font-semibold text-xs text-gray-900 leading-none">{node.label}</span>
+          <span className="font-mono text-xs text-gray-900 leading-none">{node.label}</span>
         </div>
       </div>
       <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">

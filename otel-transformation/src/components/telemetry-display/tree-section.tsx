@@ -26,10 +26,11 @@ import {
   type RawOTTLParams,
   type RenameKeyParams,
   type RenamePrefixParams,
+  type DeleteParams,
   type Transformation,
 } from '@/types/transformation-types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Wrench, Trash2, Check, X } from 'lucide-react';
+import { Wrench, Trash2, Check, X, Undo2 } from 'lucide-react';
 
 const GROUP_BADGE_CLASS =
   'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
@@ -675,6 +676,70 @@ function AttributeGroupRow({
     updateTransformation,
   ]);
 
+  const handleUndoRenameGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!renameTransformation) {
+      return;
+    }
+
+    const reverseUpdates: Array<{ currentKey: string; newKey: string }> = [];
+    const idsToRemove = new Set<string>();
+
+    groupedAttributes.forEach((attribute) => {
+      const existingRename = transformationByAttributePath.get(attribute.path);
+      if (!existingRename) {
+        return;
+      }
+      const params = existingRename.params as RenameKeyParams;
+      reverseUpdates.push({
+        currentKey: params.newKey,
+        newKey: params.oldKey,
+      });
+      idsToRemove.add(existingRename.id);
+    });
+
+    transformations.forEach((candidate) => {
+      if (candidate.pairedTransformationId === renameTransformation.id) {
+        idsToRemove.add(candidate.id);
+      }
+    });
+
+    idsToRemove.add(renameTransformation.id);
+
+    idsToRemove.forEach((id) => removeTransformation(id));
+
+    if (reverseUpdates.length > 0) {
+      applyAttributeOrderUpdates(reverseUpdates);
+    }
+
+    setDraftName(originalPrefix);
+    setIsRenaming(false);
+  };
+
+  const handleUndoDeleteGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    const idsToRemove = new Set<string>();
+
+    groupedAttributes.forEach((attribute) => {
+      transformations.forEach((transformation) => {
+        if (transformation.type !== TransformationType.DELETE) {
+          return;
+        }
+
+        const params = transformation.params as DeleteParams;
+        if (
+          params.attributePath === attribute.path &&
+          params.attributeKey === attribute.key
+        ) {
+          idsToRemove.add(transformation.id);
+        }
+      });
+    });
+
+    idsToRemove.forEach((id) => removeTransformation(id));
+  };
+
   const handleDeleteGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
@@ -721,6 +786,15 @@ function AttributeGroupRow({
 
   const handleRenameGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
+    setDraftName(displayLabel);
+    setIsRenaming(true);
+  };
+
+  const handleRenameGroupFromLabel = (event: React.MouseEvent<HTMLSpanElement>) => {
+    event.stopPropagation();
+    if (isRenaming) {
+      return;
+    }
     setDraftName(displayLabel);
     setIsRenaming(true);
   };
@@ -777,6 +851,11 @@ function AttributeGroupRow({
       ? 'bg-gray-300/60 text-gray-500'
       : 'bg-indigo-600 text-white';
   const isGroupRenamed = Boolean(renamePrefixParams);
+  const isGroupDeleted =
+    groupedAttributes.length > 0 &&
+    groupedAttributes.every((attribute) =>
+      attribute.modifications.some((modification) => modification.type === 'delete')
+    );
   const baseBackgroundClass = isGroupRenamed ? 'bg-gray-100' : '';
   const hoverBackgroundClass = isHovered || isHighlighted ? 'bg-gray-300/60' : '';
   const rowBackgroundClass = hoverBackgroundClass || baseBackgroundClass;
@@ -806,24 +885,64 @@ function AttributeGroupRow({
             >
               <span className="text-xs text-gray-600">{isCollapsed ? '▸' : '▾'}</span>
               {isRenaming ? (
-                <input
-                  ref={inputRef}
-                  value={draftName}
-                  onChange={(event) => setDraftName(event.target.value)}
-                  onKeyDown={handleRenameInputKeyDown}
-                  onBlur={handleRenameInputBlur}
-                  className="w-[200px] rounded-md border border-blue-300 bg-white px-2 py-1 font-mono text-xs text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 leading-tight"
-                  autoFocus
-                />
-              ) : (
-                <div className="flex flex-col gap-1 leading-none">
-                  <span className="font-mono text-xs text-gray-900 leading-none">{displayLabel}</span>
-                  {renamePrefixParams ? (
-                    <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
-                      {renamePrefixParams.oldPrefix}
-                    </span>
-                  ) : null}
+                <div className="flex items-center gap-1 leading-none">
+                  <input
+                    ref={inputRef}
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                    onKeyDown={handleRenameInputKeyDown}
+                    onBlur={handleRenameInputBlur}
+                    className="w-[200px] rounded-md border border-blue-300 bg-white px-2 py-1 font-mono text-xs text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 leading-tight"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRenameSave();
+                      }}
+                      className="z-20 rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      aria-label="Save prefix"
+                      title="Save (Enter)"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRenameCancel(event);
+                      }}
+                      className="z-20 rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      aria-label="Cancel rename"
+                      title="Cancel (Esc)"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="flex cursor-pointer flex-col gap-1 leading-none"
+                        onClick={handleRenameGroupFromLabel}
+                      >
+                        <span className="font-mono text-xs text-gray-900 leading-none">{displayLabel}</span>
+                        {renamePrefixParams ? (
+                          <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                            {renamePrefixParams.oldPrefix}
+                          </span>
+                        ) : null}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Click to rename</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
           </div>
@@ -842,82 +961,84 @@ function AttributeGroupRow({
           showActionButtons ? 'opacity-100' : 'opacity-0 pointer-events-none'
         } ${isRenaming ? 'opacity-100 pointer-events-auto' : ''}`}
       >
-        {isRenaming ? (
+        {isRenaming ? null : (
           <>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleRenameSave();
-                    }}
-                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                    aria-label="Save prefix"
-                  >
-                    <Check className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Save</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleRenameCancel}
-                    className="rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                    aria-label="Cancel rename"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Cancel</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </>
-        ) : (
-          <>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleRenameGroup}
-                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                    aria-label="Rename key"
-                  >
-                    <Wrench className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Rename key</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleDeleteGroup}
-                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    aria-label="Delete key prefix"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Delete key prefix</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {isGroupDeleted ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={handleUndoDeleteGroup}
+                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                      aria-label="Undo delete"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Undo delete</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleRenameGroup}
+                        className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        aria-label="Rename key"
+                      >
+                        <Wrench className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Rename key</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                {isGroupRenamed ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={handleUndoRenameGroup}
+                          className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                          aria-label="Undo rename"
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Undo rename</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={handleDeleteGroup}
+                          className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          aria-label="Delete key prefix"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Delete key prefix</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </>
+            )}
           </>
         )}
       </div>

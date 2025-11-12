@@ -192,25 +192,6 @@ export function AttributeRow({
     }
     return undefined;
   };
-  const activeModifications = attribute.modifications.filter((modification) => {
-    const status = getTransformationStatusById(modification.transformationId);
-    if (status === TransformationStatus.ACTIVE) {
-      return true;
-    }
-    switch (modification.type) {
-      case 'delete':
-      case 'mask':
-      case 'rename-key':
-      case 'add':
-      case 'add-static':
-      case 'add-substring':
-        return true;
-      default:
-        return false;
-    }
-  });
-  const activeModificationTypes = new Set(activeModifications.map((modification) => modification.type));
-
   // Use sortable hook for draggable rows
   const {
     attributes: sortableAttributes,
@@ -250,6 +231,45 @@ export function AttributeRow({
       (t.params as any).oldKey === attribute.key &&
       (t.params as any).attributePath === attribute.path
   );
+
+  const renameParentTransformation =
+    renameTransformation?.pairedTransformationId != null
+      ? transformationById.get(renameTransformation.pairedTransformationId)
+      : null;
+  const isGroupRename = renameParentTransformation?.type === TransformationType.RENAME_PREFIX;
+
+  const getLastPathSegment = (value?: string | null): string => {
+    if (!value) {
+      return '';
+    }
+    const segments = value.split('/');
+    const last = segments[segments.length - 1];
+    return last !== undefined && last.length > 0 ? last : value;
+  };
+
+  const baseActiveModifications = attribute.modifications.filter((modification) => {
+    const status = getTransformationStatusById(modification.transformationId);
+    if (status === TransformationStatus.ACTIVE) {
+      return true;
+    }
+    switch (modification.type) {
+      case 'delete':
+      case 'mask':
+      case 'rename-key':
+      case 'add':
+      case 'add-static':
+      case 'add-substring':
+        return true;
+      default:
+        return false;
+    }
+  });
+
+  const activeModifications = isGroupRename
+    ? baseActiveModifications.filter((modification) => modification.type !== 'rename-key')
+    : baseActiveModifications;
+
+  const activeModificationTypes = new Set(activeModifications.map((modification) => modification.type));
 
   const isDeleteActive = deleteTransformation?.status === TransformationStatus.ACTIVE;
   const isMaskActive = maskTransformation?.status === TransformationStatus.ACTIVE;
@@ -882,7 +902,7 @@ export function AttributeRow({
       );
     }
 
-    if (isRenamed) {
+    if (isRenamed && !isGroupRename) {
       const isRenameActive = isTransformationActiveById(renameTransformation?.id);
       const renameClassName = isRenameActive
         ? 'bg-indigo-600 text-white'
@@ -1253,11 +1273,13 @@ export function AttributeRow({
                       className="font-mono text-xs text-gray-900 leading-none cursor-pointer"
                       onClick={() => handleStartRenaming()}
                     >
-                      {renameParams.newKey}
+                      {isGroupRename ? (displayKey ?? getLastPathSegment(renameParams.newKey)) : renameParams.newKey}
                     </span>
-                    <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
-                      {renameParams.oldKey}
-                    </span>
+                    {isGroupRename ? null : (
+                      <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                        {renameParams.oldKey}
+                      </span>
+                    )}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>

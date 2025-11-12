@@ -30,6 +30,14 @@ export class TransformationEngine {
       const activeTransformations = transformations.filter(
         (transformation) => transformation.status === TransformationStatus.ACTIVE
       );
+      const uniqueActiveTransformationCount = (() => {
+        const identifiers = new Set<string>();
+        activeTransformations.forEach((transformation) => {
+          const identifier = transformation.pairedTransformationId ?? transformation.id;
+          identifiers.add(identifier);
+        });
+        return identifiers.size;
+      })();
 
       // Apply transformations sequentially
       for (const transformation of activeTransformations) {
@@ -52,7 +60,7 @@ export class TransformationEngine {
       return {
         transformedData,
         transformedTree,
-        appliedTransformations: activeTransformations.length,
+        appliedTransformations: uniqueActiveTransformationCount,
         executionTime: endTime - startTime,
         failedTransformations: [],
         warnings: [],
