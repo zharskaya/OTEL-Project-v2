@@ -72,6 +72,7 @@ export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttribut
         case 'delete':
         case 'add-static':
         case 'add-substring':
+        case 'rename-prefix':
           // skip move/add transformations – already covered by modifications
           return;
         default:

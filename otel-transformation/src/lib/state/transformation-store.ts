@@ -112,6 +112,11 @@ export const useTransformationStore = create<TransformationStore>(
             }
           });
         }
+        state.transformations.forEach((transformation) => {
+          if (transformation.pairedTransformationId === id) {
+            idsToRemove.add(transformation.id);
+          }
+        });
 
         const filtered = state.transformations.filter((t) => !idsToRemove.has(t.id));
         return { transformations: filtered.map((item, index) => ({ ...item, order: index })) };

@@ -207,6 +207,63 @@ export class TransformationEngine {
         break;
       }
       
+      case TransformationType.RENAME_PREFIX: {
+        const { oldPrefix, newPrefix } = params as RenamePrefixParams;
+        const renameInAttributes = (attributes: Array<{ key: string }>) => {
+          attributes.forEach((attribute) => {
+            if (!attribute.key) {
+              return;
+            }
+            if (attribute.key === oldPrefix) {
+              attribute.key = newPrefix;
+              return;
+            }
+            if (attribute.key.startsWith(`${oldPrefix}/`)) {
+              attribute.key = `${newPrefix}${attribute.key.slice(oldPrefix.length)}`;
+            }
+          });
+        };
+
+        if (transformation.sectionId.includes('resource')) {
+          renameInAttributes(data.resource.attributes);
+        } else if (transformation.sectionId.includes('span-attributes')) {
+          const span = data.scopeSpans[0]?.spans[0];
+          if (span) {
+            renameInAttributes(span.attributes);
+          }
+        } else if (transformation.sectionId.includes('scope-info')) {
+          const scopeAttributes = data.scopeSpans[0]?.scope?.attributes;
+          if (scopeAttributes) {
+            renameInAttributes(scopeAttributes);
+          }
+        } else if (transformation.sectionId.includes('events')) {
+          data.scopeSpans.forEach((scopeSpan) => {
+            scopeSpan.spans.forEach((span) => {
+              span.events.forEach((event) => renameInAttributes(event.attributes));
+            });
+          });
+        } else if (transformation.sectionId.includes('links')) {
+          data.scopeSpans.forEach((scopeSpan) => {
+            scopeSpan.spans.forEach((span) => {
+              span.links.forEach((link) => renameInAttributes(link.attributes));
+            });
+          });
+        }
+
+        const groupModKey = `${transformation.sectionId}::group::${newPrefix}`;
+        if (!modifications.has(groupModKey)) {
+          modifications.set(groupModKey, []);
+        }
+        modifications.get(groupModKey)!.push({
+          transformationId: transformation.id,
+          type: transformation.type,
+          label: 'RENAME',
+          color: ModificationColor.BLUE,
+        });
+
+        break;
+      }
+      
       case TransformationType.RENAME_KEY: {
         // Rename the attribute key
         const oldKey = params.oldKey;

@@ -10,6 +10,7 @@ import { AttributeRow } from './attribute-row';
 import {
   buildGroupedAttributeTree,
   flattenGroupedAttributeTree,
+  collectAttributesFromGroup,
   type FlattenedGroupedNode,
   type GroupedGroupNode,
   type GroupedNode,
@@ -17,9 +18,21 @@ import {
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
-import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
+import { useTransformations, useTransformationActions, useAttributeOrder, useHighlightedTransformationIds } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
-import { TransformationType, type RawOTTLParams } from '@/types/transformation-types';
+import {
+  TransformationType,
+  TransformationStatus,
+  type RawOTTLParams,
+  type RenameKeyParams,
+  type RenamePrefixParams,
+  type Transformation,
+} from '@/types/transformation-types';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Wrench, Trash2, Check, X } from 'lucide-react';
+
+const GROUP_BADGE_CLASS =
+  'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
 
 interface TreeSectionProps {
   section: TelemetrySection;
@@ -185,12 +198,53 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
       const missingKeys = allKeys.filter((key) => !updated.includes(key));
 
+      const insertUsingNaturalOrder = (targetKey: string) => {
+        const baseIndex = allKeys.indexOf(targetKey);
+        if (baseIndex === -1) {
+          updated.push(targetKey);
+          return;
+        }
+
+        let inserted = false;
+
+        for (let index = baseIndex - 1; index >= 0; index -= 1) {
+          const previousKey = allKeys[index];
+          const existingIndex = updated.indexOf(previousKey);
+          if (existingIndex !== -1) {
+            updated.splice(existingIndex + 1, 0, targetKey);
+            inserted = true;
+            break;
+          }
+        }
+
+        if (!inserted) {
+          for (let index = baseIndex + 1; index < allKeys.length; index += 1) {
+            const nextKey = allKeys[index];
+            const existingIndex = updated.indexOf(nextKey);
+            if (existingIndex !== -1) {
+              updated.splice(existingIndex, 0, targetKey);
+              inserted = true;
+              break;
+            }
+          }
+        }
+
+        if (!inserted) {
+          updated.push(targetKey);
+        }
+      };
+
       for (const key of missingKeys) {
         const attribute = keyToAttributes.get(key)?.[0];
         if (!attribute) continue;
 
         const firstModification = attribute.modifications[0]?.type;
         const sourcePath = (attribute as any).sourceAttributePath as string | undefined;
+        const hasAddModification = attribute.modifications.some((modification) =>
+          modification.type === 'add' ||
+          modification.type === 'add-static' ||
+          modification.type === 'raw-ottl'
+        );
 
         if (firstModification === 'add-substring' && sourcePath) {
           const sourceAttribute = baseAttributes.find((attr) => attr.path === sourcePath);
@@ -201,10 +255,15 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           } else {
             updated.unshift(key);
           }
-        } else {
-          // Static attributes should appear at the top
-          updated.unshift(key);
+          continue;
         }
+
+        if (hasAddModification) {
+          updated.unshift(key);
+          continue;
+        }
+
+        insertUsingNaturalOrder(key);
       }
 
       for (const key of allKeys) {
@@ -270,6 +329,23 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       .map(id => attrMap.get(id))
       .filter((a): a is DisplayAttribute => a !== undefined);
   }, [baseAttributes, visualOrder]);
+
+  const renamePrefixTransformations = React.useMemo(
+    () =>
+      sectionTransformations.filter(
+        (transformation) => transformation.type === TransformationType.RENAME_PREFIX
+      ),
+    [sectionTransformations]
+  );
+
+  const renamePrefixByGroupId = React.useMemo(() => {
+    const map = new Map<string, Transformation>();
+    renamePrefixTransformations.forEach((transformation) => {
+      const params = transformation.params as RenamePrefixParams;
+      map.set(params.groupId, transformation);
+    });
+    return map;
+  }, [renamePrefixTransformations]);
 
   const groupedAttributeNodes = React.useMemo(
     () => buildGroupedAttributeTree(section.id, allAttributes),
@@ -360,6 +436,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                           key={`group-${groupId}`}
                           node={item.node}
                           isCollapsed={isCollapsed}
+                          sectionId={section.id}
+                          renameTransformation={renamePrefixByGroupId.get(groupId) ?? null}
                           onToggle={() =>
                             setCollapsedGroups((previous) => ({
                               ...previous,
@@ -419,28 +497,431 @@ interface AttributeGroupRowProps {
   node: GroupedGroupNode;
   isCollapsed: boolean;
   onToggle: () => void;
+  sectionId: string;
+  renameTransformation: Transformation | null;
 }
 
-function AttributeGroupRow({ node, isCollapsed, onToggle }: AttributeGroupRowProps) {
+function AttributeGroupRow({
+  node,
+  isCollapsed,
+  onToggle,
+  sectionId,
+  renameTransformation,
+}: AttributeGroupRowProps) {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const [isRenaming, setIsRenaming] = React.useState(false);
+  const transformations = useTransformations();
+  const highlightedTransformationIds = useHighlightedTransformationIds();
+  const { addTransformation, updateTransformation, setAttributeOrder, removeTransformation } =
+    useTransformationActions();
+  const attributeOrder = useAttributeOrder();
+  const groupedAttributes = React.useMemo(() => collectAttributesFromGroup(node), [node]);
+  const renamePrefixParams = renameTransformation
+    ? (renameTransformation.params as RenamePrefixParams)
+    : null;
+  const displayLabel = renamePrefixParams ? renamePrefixParams.newPrefix : node.label;
+  const originalPrefix = renamePrefixParams ? renamePrefixParams.oldPrefix : node.fullPath;
+  const [draftName, setDraftName] = React.useState(displayLabel);
+  const resolvedDisplayLabel = renamePrefixParams ? renamePrefixParams.newPrefix : node.label;
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const applyAttributeOrderUpdates = React.useCallback(
+    (updatedKeys: Array<{ currentKey: string; newKey: string }>) => {
+      const currentOrder = attributeOrder.get(sectionId);
+      if (!currentOrder || currentOrder.length === 0) {
+        return;
+      }
+
+      let nextOrder = [...currentOrder];
+      updatedKeys.forEach(({ currentKey, newKey }) => {
+        nextOrder = nextOrder.map((key) => (key === currentKey ? newKey : key));
+      });
+
+      if (nextOrder.join(',') !== currentOrder.join(',')) {
+        setAttributeOrder(sectionId, nextOrder);
+      }
+    },
+    [attributeOrder, sectionId, setAttributeOrder]
+  );
+
+  const transformationByAttributePath = React.useMemo(() => {
+    const map = new Map<string, Transformation>();
+    transformations.forEach((transformation) => {
+      if (transformation.type !== TransformationType.RENAME_KEY) {
+        return;
+      }
+      const params = transformation.params as RenameKeyParams;
+      map.set(params.attributePath, transformation);
+    });
+    return map;
+  }, [transformations]);
+
+  const isHighlighted =
+    (renameTransformation && highlightedTransformationIds.includes(renameTransformation.id)) || false;
+
+  React.useEffect(() => {
+    if (isRenaming) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [isRenaming]);
+
+  React.useEffect(() => {
+    if (!isRenaming) {
+      setDraftName(displayLabel);
+    }
+  }, [displayLabel, isRenaming]);
+
+  const handleRenameSave = React.useCallback(() => {
+    const trimmed = draftName.trim();
+    if (trimmed.length === 0) {
+      alert('Key prefix cannot be empty.');
+      return;
+    }
+
+    const parentId = renameTransformation?.id ?? `t-${Date.now()}-group-rename`;
+    const persistentOldPrefix = renamePrefixParams ? renamePrefixParams.oldPrefix : originalPrefix;
+    const prefixWithSlash = `${persistentOldPrefix}/`;
+    const updatedKeys: Array<{ currentKey: string; newKey: string }> = [];
+
+    const parentParams: RenamePrefixParams = {
+      type: TransformationType.RENAME_PREFIX,
+      groupId: node.id,
+      oldPrefix: persistentOldPrefix,
+      newPrefix: trimmed,
+      attributePaths: groupedAttributes.map((attribute) => attribute.path),
+    };
+
+    if (renameTransformation) {
+      updateTransformation(parentId, {
+        params: parentParams,
+        sectionId,
+        status: TransformationStatus.ACTIVE,
+        createdAt: new Date(),
+      });
+    } else {
+      addTransformation({
+        id: parentId,
+        type: TransformationType.RENAME_PREFIX,
+        order: 0,
+        sectionId,
+        createdAt: new Date(),
+        status: TransformationStatus.ACTIVE,
+        params: parentParams,
+      });
+    }
+
+    groupedAttributes.forEach((attribute, index) => {
+      const existingRename = transformationByAttributePath.get(attribute.path);
+      const renameParams = existingRename ? (existingRename.params as RenameKeyParams) : null;
+      const originalKey = renameParams ? renameParams.oldKey : attribute.key;
+
+      if (!originalKey.startsWith(prefixWithSlash) && originalKey !== persistentOldPrefix) {
+        return;
+      }
+
+      const suffix =
+        originalKey === persistentOldPrefix ? '' : originalKey.slice(prefixWithSlash.length);
+      const newKey = suffix ? `${trimmed}/${suffix}` : trimmed;
+      const currentKey = renameParams ? renameParams.newKey : attribute.key;
+
+      if (renameParams) {
+        updateTransformation(existingRename!.id, {
+          params: {
+            ...renameParams,
+            newKey,
+          },
+          sectionId: attribute.sectionId,
+          status: TransformationStatus.ACTIVE,
+          createdAt: new Date(),
+          pairedTransformationId: parentId,
+        });
+      } else {
+        addTransformation({
+          id: `t-${Date.now()}-${attribute.id}-${index}`,
+          type: TransformationType.RENAME_KEY,
+          order: 0,
+          sectionId: attribute.sectionId,
+          createdAt: new Date(),
+          status: TransformationStatus.ACTIVE,
+          pairedTransformationId: parentId,
+          params: {
+            type: TransformationType.RENAME_KEY,
+            attributePath: attribute.path,
+            oldKey: originalKey,
+            newKey,
+          },
+        });
+      }
+
+      updatedKeys.push({ currentKey, newKey });
+    });
+
+    if (updatedKeys.length > 0) {
+      applyAttributeOrderUpdates(updatedKeys);
+    }
+
+    setIsRenaming(false);
+  }, [
+    addTransformation,
+    applyAttributeOrderUpdates,
+    draftName,
+    groupedAttributes,
+    originalPrefix,
+    renamePrefixParams,
+    renameTransformation,
+    sectionId,
+    transformationByAttributePath,
+    updateTransformation,
+  ]);
+
+  const handleDeleteGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+
+    groupedAttributes.forEach((attribute, index) => {
+      const isAlreadyDeleted = attribute.modifications.some((modification) => modification.type === 'delete');
+      if (isAlreadyDeleted) {
+        return;
+      }
+
+      const attributeValue = attribute.value ?? '';
+      addTransformation({
+        id: `t-${Date.now()}-${attribute.id}-${index}`,
+        type: TransformationType.DELETE,
+        order: 0,
+        sectionId: attribute.sectionId,
+        createdAt: new Date(),
+        status: TransformationStatus.ACTIVE,
+        params: {
+          type: TransformationType.DELETE,
+          attributePath: attribute.path,
+          attributeKey: attribute.key,
+          attributeValue,
+        },
+      });
+    });
+
+    if (renameTransformation) {
+      transformations.forEach((candidate) => {
+        if (candidate.pairedTransformationId === renameTransformation.id) {
+          removeTransformation(candidate.id);
+        }
+      });
+      removeTransformation(renameTransformation.id);
+    }
+  };
+
+  const handleRenameCancel = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    setIsRenaming(false);
+    setDraftName(displayLabel);
+  };
+
+  const handleRenameGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setDraftName(displayLabel);
+    setIsRenaming(true);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isRenaming) {
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onToggle();
+    }
+    if (event.key === 'ArrowRight' && isCollapsed) {
+      onToggle();
+    }
+    if (event.key === 'ArrowLeft' && !isCollapsed) {
+      onToggle();
+    }
+  };
+
+  const handleRenameInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleRenameSave();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      handleRenameCancel();
+    }
+  };
+
+  const handleRenameInputBlur = () => {
+    if (!isRenaming) {
+      return;
+    }
+
+    const trimmed = draftName.trim();
+    if (trimmed === '') {
+      handleRenameCancel();
+      return;
+    }
+
+    if (trimmed === displayLabel) {
+      handleRenameCancel();
+      return;
+    }
+
+    handleRenameSave();
+  };
+
+  const showActionButtons = isRenaming || isHovered;
+  const showRenameBadge = Boolean(renamePrefixParams);
+  const renameBadgeClassName =
+    showRenameBadge && renameTransformation?.status !== TransformationStatus.ACTIVE
+      ? 'bg-gray-300/60 text-gray-500'
+      : 'bg-indigo-600 text-white';
+  const isGroupRenamed = Boolean(renamePrefixParams);
+  const baseBackgroundClass = isGroupRenamed ? 'bg-gray-100' : '';
+  const hoverBackgroundClass = isHovered || isHighlighted ? 'bg-gray-300/60' : '';
+  const rowBackgroundClass = hoverBackgroundClass || baseBackgroundClass;
+
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-full items-center py-1.5 mb-0.5 text-left focus:outline-none transition-colors hover:bg-gray-100"
+    <div
+      className={`relative mb-0.5 flex w-full items-center py-1.5 transition-colors ${rowBackgroundClass}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="w-[260px] flex-shrink-0 flex items-start pr-4 leading-none">
-        <div
-          style={{ paddingLeft: `${40 + node.depth * 16}px` }}
-          className="flex items-center gap-2 leading-none"
-        >
-          <span className="text-xs text-gray-600">{isCollapsed ? '▸' : '▾'}</span>
-          <span className="font-semibold text-xs text-gray-900 leading-none">{node.label}</span>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => {
+          if (!isRenaming) {
+            onToggle();
+          }
+        }}
+        onKeyDown={handleKeyDown}
+        className="flex w-full items-center text-left focus:outline-none"
+      >
+        <div className="flex flex-1 items-center pr-28">
+          <div className="w-[260px] flex-shrink-0 flex items-start pr-4 leading-none">
+            <div
+              style={{ paddingLeft: `${40 + node.depth * 16}px` }}
+              className="flex items-center gap-2 leading-none"
+            >
+              <span className="text-xs text-gray-600">{isCollapsed ? '▸' : '▾'}</span>
+              {isRenaming ? (
+                <input
+                  ref={inputRef}
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  onKeyDown={handleRenameInputKeyDown}
+                  onBlur={handleRenameInputBlur}
+                  className="w-[200px] rounded-md border border-blue-300 bg-white px-2 py-1 font-mono text-xs text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 leading-tight"
+                  autoFocus
+                />
+              ) : (
+                <div className="flex flex-col gap-1 leading-none">
+                  <span className="font-mono text-xs text-gray-900 leading-none">{displayLabel}</span>
+                  {renamePrefixParams ? (
+                    <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                      {renamePrefixParams.oldPrefix}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">
+            {groupedAttributes.length} {groupedAttributes.length === 1 ? 'key' : 'keys'}
+          </div>
         </div>
+        {showRenameBadge ? (
+          <div className="flex items-center gap-2 pr-2">
+            <span className={`${GROUP_BADGE_CLASS} ${renameBadgeClassName}`}>RENAME</span>
+          </div>
+        ) : null}
       </div>
-      <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">
-        {node.attributeCount} {node.attributeCount === 1 ? 'key' : 'keys'}
+      <div
+        className={`absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2 transition-opacity ${
+          showActionButtons ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        } ${isRenaming ? 'opacity-100 pointer-events-auto' : ''}`}
+      >
+        {isRenaming ? (
+          <>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRenameSave();
+                    }}
+                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    aria-label="Save prefix"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Save</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleRenameCancel}
+                    className="rounded-md p-1.5 bg-white text-gray-700 border border-gray-300 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    aria-label="Cancel rename"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Cancel</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </>
+        ) : (
+          <>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleRenameGroup}
+                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                    aria-label="Rename key"
+                  >
+                    <Wrench className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Rename key</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleDeleteGroup}
+                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    aria-label="Delete key prefix"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Delete key prefix</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </>
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 

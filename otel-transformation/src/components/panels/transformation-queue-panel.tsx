@@ -48,6 +48,7 @@ import {
   type DeleteParams,
   type MaskParams,
   type RenameKeyParams,
+  type RenamePrefixParams,
 } from '@/types/transformation-types';
 import {
   Trash2,
@@ -98,7 +99,11 @@ export function TransformationQueuePanel({
 
   const displayTransformations = useMemo(() => {
     const skipIds = new Set<string>();
+    const renamePrefixParentIds = new Set<string>();
     orderedTransformations.forEach((transformation) => {
+      if (transformation.type === TransformationType.RENAME_PREFIX) {
+        renamePrefixParentIds.add(transformation.id);
+      }
       if (transformation.type === TransformationType.DELETE) {
         const params = transformation.params as DeleteParams;
         if ((params as DeleteParams).movedToSectionId) {
@@ -106,23 +111,46 @@ export function TransformationQueuePanel({
         }
       }
     });
+    orderedTransformations.forEach((transformation) => {
+      if (
+        transformation.type === TransformationType.RENAME_KEY &&
+        transformation.pairedTransformationId &&
+        renamePrefixParentIds.has(transformation.pairedTransformationId)
+      ) {
+        skipIds.add(transformation.id);
+      }
+    });
     return orderedTransformations.filter((transformation) => !skipIds.has(transformation.id));
   }, [orderedTransformations]);
 
-  const activeTransformationCount = useMemo(
-    () =>
-      displayTransformations.filter(
-        (transformation) => transformation.status === TransformationStatus.ACTIVE
-      ).length,
-    [displayTransformations]
-  );
+  const { activeTransformationCount, activeRange } = useMemo(() => {
+    const activeTransformations = orderedTransformations.filter(
+      (transformation) => transformation.status === TransformationStatus.ACTIVE
+    );
+
+    if (activeTransformations.length === 0) {
+      return {
+        activeTransformationCount: 0,
+        activeRange: { start: 0, end: 0 },
+      };
+    }
+
+    const activeOrders = activeTransformations
+      .map((transformation) => transformation.order)
+      .sort((first, second) => first - second);
+
+    return {
+      activeTransformationCount: activeTransformations.length,
+      activeRange: {
+        start: activeOrders[0],
+        end: activeOrders[activeOrders.length - 1] + 1,
+      },
+    };
+  }, [orderedTransformations]);
 
   useEffect(() => {
-    setActiveRange({
-          start: 0,
-      end: activeTransformationCount,
-    });
-  }, [activeTransformationCount, setActiveRange]);
+    setActiveRange(activeRange);
+  }, [activeRange, setActiveRange]);
 
   const defaultSectionId = sections[0]?.id ?? '';
 
@@ -220,6 +248,14 @@ export function TransformationQueuePanel({
 
       const idsToUpdate = new Set<string>([transformation.id]);
 
+      if (transformation.type === TransformationType.RENAME_PREFIX) {
+        transformations.forEach((candidate) => {
+          if (candidate.pairedTransformationId === transformation.id) {
+            idsToUpdate.add(candidate.id);
+          }
+        });
+      }
+
       if (transformation.pairedTransformationId) {
         const pairId = transformation.pairedTransformationId;
         transformations.forEach((candidate) => {
@@ -264,15 +300,43 @@ export function TransformationQueuePanel({
     setIsHydrated(true);
   }, []);
 
-  const enabledTransformationsCount = useMemo(
-    () =>
-      transformations.filter(
-        (transformation) => transformation.status === TransformationStatus.ACTIVE
-      ).length,
-    [transformations]
-  );
-  const hasTransformations = transformations.length > 0;
-  const counterLabel = `${enabledTransformationsCount}/${transformations.length}`;
+  const { enabledTransformationsCount, uniqueTransformationCount } = useMemo(() => {
+    const activeTransformations = new Set<string>();
+    const uniqueTransformations = new Set<string>();
+
+    transformations.forEach((transformation) => {
+      const identifier = transformation.pairedTransformationId ?? transformation.id;
+      uniqueTransformations.add(identifier);
+
+      if (transformation.status === TransformationStatus.ACTIVE) {
+        activeTransformations.add(identifier);
+      }
+    });
+
+    return {
+      enabledTransformationsCount: activeTransformations.size,
+      uniqueTransformationCount: uniqueTransformations.size,
+    };
+  }, [transformations]);
+
+  const hasTransformations = uniqueTransformationCount > 0;
+  const counterLabel = `${enabledTransformationsCount}/${uniqueTransformationCount}`;
+
+  const childTransformationsByParentId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    transformations.forEach((transformation) => {
+      if (!transformation.pairedTransformationId) {
+        return;
+      }
+      const list = map.get(transformation.pairedTransformationId);
+      if (list) {
+        list.push(transformation.id);
+      } else {
+        map.set(transformation.pairedTransformationId, [transformation.id]);
+      }
+    });
+    return map;
+  }, [transformations]);
 
   if (!isHydrated) {
     return (
@@ -436,6 +500,7 @@ export function TransformationQueuePanel({
                         onToggleVisibility={handleToggleVisibility}
                         showDropIndicator={dropIndicatorId === transformation.id}
                         onRemove={removeTransformation}
+                        childTransformationIds={childTransformationsByParentId.get(transformation.id) ?? []}
                         onEditRawOttl={(rawTransformation) => {
                           const params = rawTransformation.params as RawOTTLParams;
                           setRawOttlEditor({
@@ -472,6 +537,7 @@ interface QueueItemProps {
   showDropIndicator: boolean;
   onRemove: (id: string) => void;
   onEditRawOttl?: (transformation: Transformation) => void;
+  childTransformationIds?: string[];
 }
 
 function QueueItem({
@@ -480,6 +546,7 @@ function QueueItem({
   showDropIndicator,
   onRemove,
   onEditRawOttl,
+  childTransformationIds = [],
 }: QueueItemProps) {
   const {
     setNodeRef,
@@ -526,7 +593,6 @@ function QueueItem({
         if (params.movedFromSectionId && key) {
           pushUnique(inputCandidates, createSectionKeyToken(params.movedFromSectionId, key));
         }
-        pushUnique(outputCandidates, params.movedToPath);
         break;
       }
       case TransformationType.ADD_SUBSTRING: {
@@ -564,6 +630,16 @@ function QueueItem({
         pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.oldKey));
         break;
       }
+      case TransformationType.RENAME_PREFIX: {
+        const params = transformation.params as RenamePrefixParams;
+        pushUnique(inputCandidates, params.oldPrefix);
+        pushUnique(outputCandidates, params.newPrefix);
+        params.attributePaths.forEach((path) => {
+          pushUnique(inputCandidates, path);
+          pushUnique(outputCandidates, path);
+        });
+        break;
+      }
       default:
         break;
     }
@@ -575,7 +651,10 @@ function QueueItem({
   }, [transformation]);
 
   const applyHoverHighlights = () => {
-    setHoveredTransformationIds([transformation.id]);
+    const idsToHighlight = childTransformationIds.length > 0
+      ? [transformation.id, ...childTransformationIds]
+      : [transformation.id];
+    setHoveredTransformationIds(idsToHighlight);
     if (inputToken) {
       setHoveredInputAttributeId(inputToken);
     }
@@ -941,6 +1020,37 @@ function getRowDetails(transformation: Transformation): RowDetails {
             {' → '}
             <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
               {newKey ?? ''}
+            </span>
+          </>
+        ),
+        actionClassName: getActionClassName('RENAME'),
+      };
+    }
+    case TransformationType.RENAME_PREFIX: {
+      const params = transformation.params as RenamePrefixParams;
+      return {
+        action: 'RENAME',
+        section: formatSectionTitle(transformation.sectionId),
+        description: (
+          <>
+            <span
+              className={
+                transformation.status === TransformationStatus.ACTIVE
+                  ? 'text-gray-900'
+                  : 'text-gray-400'
+              }
+            >
+              {params.oldPrefix}
+            </span>
+            {' → '}
+            <span
+              className={
+                transformation.status === TransformationStatus.ACTIVE
+                  ? 'text-gray-900'
+                  : 'text-gray-400'
+              }
+            >
+              {params.newPrefix}
             </span>
           </>
         ),

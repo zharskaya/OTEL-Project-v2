@@ -22,6 +22,7 @@ export enum TransformationType {
   DELETE = 'delete',
   MASK = 'mask',
   RENAME_KEY = 'rename-key',
+  RENAME_PREFIX = 'rename-prefix',
   RAW_OTTL = 'raw-ottl',
 }
 
@@ -37,6 +38,7 @@ export type TransformationParams =
   | DeleteParams
   | MaskParams
   | RenameKeyParams
+  | RenamePrefixParams
   | RawOTTLParams;
 
 export interface AddStaticParams {
@@ -85,6 +87,14 @@ export interface RenameKeyParams {
   attributePath: string;
   oldKey: string;
   newKey: string;
+}
+
+export interface RenamePrefixParams {
+  type: TransformationType.RENAME_PREFIX;
+  groupId: string;
+  oldPrefix: string;
+  newPrefix: string;
+  attributePaths: string[];
 }
 
 export interface RawOTTLParams {

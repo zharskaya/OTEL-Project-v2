@@ -107,11 +107,26 @@ export function useUpdateCount(sectionId: string) {
 
   return useMemo(
     () =>
-      allTransformations.filter(
-        (transformation) =>
-          transformation.sectionId === sectionId &&
-          transformation.type !== TransformationType.RAW_OTTL
-      ).length,
+      allTransformations.filter((transformation) => {
+        if (transformation.sectionId !== sectionId) {
+          return false;
+        }
+        if (transformation.type === TransformationType.RAW_OTTL) {
+          return false;
+        }
+        if (
+          transformation.type === TransformationType.RENAME_KEY &&
+          transformation.pairedTransformationId
+        ) {
+          const parent = allTransformations.find(
+            (candidate) => candidate.id === transformation.pairedTransformationId
+          );
+          if (parent?.type === TransformationType.RENAME_PREFIX) {
+            return false;
+          }
+        }
+        return true;
+      }).length,
     [allTransformations, sectionId]
   );
 }

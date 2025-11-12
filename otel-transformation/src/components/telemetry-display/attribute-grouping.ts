@@ -141,3 +141,20 @@ export function flattenGroupedAttributeTree(
   return result;
 }
 
+export function collectAttributesFromGroup(node: GroupedGroupNode): DisplayAttribute[] {
+  const result: DisplayAttribute[] = [];
+
+  const traverse = (currentNodes: Array<GroupedNode>) => {
+    currentNodes.forEach((currentNode) => {
+      if (currentNode.type === 'group') {
+        traverse(currentNode.children);
+      } else {
+        result.push(currentNode.attribute);
+      }
+    });
+  };
+
+  traverse(node.children);
+  return result;
+}
+
