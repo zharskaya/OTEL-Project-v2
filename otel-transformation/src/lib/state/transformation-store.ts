@@ -4,6 +4,7 @@ import {
   Transformation,
   TransformationResult,
   TransformationType,
+  type AddStaticParams,
 } from '@/types/transformation-types';
 import { TransformationEngine } from '@/lib/transformations/transformation-engine';
 
@@ -57,14 +58,33 @@ export const useTransformationStore = create<TransformationStore>(
 
     addTransformation: (transformation) =>
       set((state) => {
-        const next = [
+        const nextTransformations = [
           ...state.transformations,
           {
             ...transformation,
             order: state.transformations.length,
           },
         ];
-        return { transformations: next };
+
+        if (transformation.type !== TransformationType.ADD_STATIC) {
+          return { transformations: nextTransformations };
+        }
+
+        const params = transformation.params as AddStaticParams;
+        const key = params.key;
+        if (!key) {
+          return { transformations: nextTransformations };
+        }
+
+        const nextAttributeOrder = new Map(state.attributeOrder);
+        const currentOrder = nextAttributeOrder.get(transformation.sectionId) ?? [];
+        const filteredOrder = currentOrder.filter((existingKey) => existingKey !== key);
+        nextAttributeOrder.set(transformation.sectionId, [key, ...filteredOrder]);
+
+        return {
+          transformations: nextTransformations,
+          attributeOrder: nextAttributeOrder,
+        };
       }),
 
     updateTransformation: (id, params) =>

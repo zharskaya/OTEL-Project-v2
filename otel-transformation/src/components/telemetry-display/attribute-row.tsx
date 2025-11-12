@@ -1439,27 +1439,6 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
             onPointerEnter={() => setIsActionHovered(true)}
             onPointerLeave={() => setIsActionHovered(false)}
           >
-            {shouldShowSelectAction && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => {
-                        openSelectionTooltip();
-                      }}
-                      onMouseEnter={handleValueMouseEnter}
-                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
-                      aria-label="Select value to transform"
-                    >
-                      <TextSelect className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Select value to transform</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
             {!isDeleted && (
               <TooltipProvider>
                 <Tooltip>
@@ -1482,13 +1461,34 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                 </Tooltip>
               </TooltipProvider>
             )}
+            {shouldShowSelectAction && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => {
+                        openSelectionTooltip();
+                      }}
+                      onMouseEnter={handleValueMouseEnter}
+                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
+                      aria-label="Select value to transform"
+                    >
+                      <TextSelect className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Select value to transform</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {shouldShowEditAddedAction && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
                       onClick={handleStartEditAddStaticValue}
-                      className="rounded-md p-1.5 bg-transparent text-gray-700 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
                       aria-label="Edit value"
                     >
                       <PenLine className="h-4 w-4" />

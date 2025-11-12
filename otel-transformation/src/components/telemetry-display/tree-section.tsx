@@ -149,20 +149,36 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   
   // Update visual order when base attributes change OR stored order changes
   React.useEffect(() => {
-    const keyToAttribute = new Map(baseAttributes.map((attr) => [attr.key, attr]));
-    const keyToId = new Map(baseAttributes.map((attr) => [attr.key, attr.id]));
+    const keyToAttributes = new Map<string, DisplayAttribute[]>();
+    const keyToIdQueue = new Map<string, string[]>();
+    baseAttributes.forEach((attr) => {
+      const attrList = keyToAttributes.get(attr.key);
+      if (attrList) {
+        attrList.push(attr);
+      } else {
+        keyToAttributes.set(attr.key, [attr]);
+      }
+
+      const idList = keyToIdQueue.get(attr.key);
+      if (idList) {
+        idList.push(attr.id);
+      } else {
+        keyToIdQueue.set(attr.key, [attr.id]);
+      }
+    });
+
     const allKeys = baseAttributes.map((attr) => attr.key);
 
     let nextKeyOrder: string[];
 
     if (storedAttributeOrder && storedAttributeOrder.length > 0) {
-      const filtered = storedAttributeOrder.filter((key) => keyToAttribute.has(key));
+      const filtered = storedAttributeOrder.filter((key) => keyToAttributes.has(key));
       let updated = [...filtered];
 
       const missingKeys = allKeys.filter((key) => !updated.includes(key));
 
       for (const key of missingKeys) {
-        const attribute = keyToAttribute.get(key);
+        const attribute = keyToAttributes.get(key)?.[0];
         if (!attribute) continue;
 
         const firstModification = attribute.modifications[0]?.type;
@@ -195,16 +211,26 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       nextKeyOrder = allKeys;
     }
 
-    const nextIdOrder = nextKeyOrder
-      .map((key) => keyToId.get(key))
-      .filter((id): id is string => Boolean(id));
-
-    // Also ensure any attribute IDs not mapped (in case of duplicates) are appended
-    for (const attr of baseAttributes) {
-      if (!nextIdOrder.includes(attr.id)) {
-        nextIdOrder.push(attr.id);
+    const nextIdOrder: string[] = [];
+    nextKeyOrder.forEach((key) => {
+      const queue = keyToIdQueue.get(key);
+      if (!queue || queue.length === 0) {
+        return;
       }
-    }
+      const nextId = queue.shift();
+      if (nextId) {
+        nextIdOrder.push(nextId);
+      }
+    });
+
+    // Append any remaining IDs (handles duplicate keys)
+    keyToIdQueue.forEach((queue) => {
+      queue.forEach((id) => {
+        if (!nextIdOrder.includes(id)) {
+          nextIdOrder.push(id);
+        }
+      });
+    });
 
     setVisualOrder((prev) => {
       const prevStr = prev.join(',');
@@ -216,7 +242,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     });
 
     const normalizedStored = storedAttributeOrder
-      ? storedAttributeOrder.filter((key) => keyToAttribute.has(key))
+      ? storedAttributeOrder.filter((key) => keyToAttributes.has(key))
       : [];
 
     if (normalizedStored.join(',') !== nextKeyOrder.join(',')) {
