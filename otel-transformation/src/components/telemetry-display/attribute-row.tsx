@@ -676,10 +676,14 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     }
   };
 
+  const matchesHoveredInput =
+    hoveredInputAttributeId === attribute.id ||
+    hoveredInputAttributeId === attribute.path;
+
   const handleRowPointerLeave = () => {
     setIsHovered(false);
     setIsValueHovered(false);
-    const inputShouldClear = hoveredInputAttributeId === attribute.id;
+    const inputShouldClear = matchesHoveredInput;
     if (inputShouldClear) {
       clearHoveredInputAttributeId();
     }
@@ -711,7 +715,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
           clearHoveredTransformationIds();
         }
       }
-      if (hoveredInputAttributeId === attribute.id) {
+      if (matchesHoveredInput) {
         clearHoveredInputAttributeId();
       }
     };
@@ -914,7 +918,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       highlightedTransformationIds.some((id) => relatedTransformationIds.includes(id)),
     [highlightedTransformationIds, relatedTransformationIds]
   );
-  const isHighlightedByInput = hoveredInputAttributeId === attribute.id;
+  const isHighlightedByInput = matchesHoveredInput;
   const isHighlightedByOutput = hoveredOutputAttributeId === attribute.id;
 
   const isRowHoverActive =
@@ -930,6 +934,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const shouldHighlightRow =
     isRowHoverActive || isHighlightedByQueue || isHighlightedByInput || isHighlightedByOutput;
   const rowHighlightClass = shouldHighlightRow ? 'bg-gray-300/60' : '';
+  const modifiedBackgroundClass = hasAnyModification ? 'bg-gray-100' : '';
 
   const updateSelectionHandles = React.useCallback(() => {
     if (!isValueInteractive || !selection || !valueRef.current) {
@@ -1032,7 +1037,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         style={style}
         {...(isDraggable ? sortableAttributes : {})}
         {...(isDraggable ? listeners : {})}
-    className={`relative flex items-center py-1.5 mb-0.5 transition-colors leading-none ${rowHighlightClass} ${dragCursorClass}`}
+    className={`relative flex items-center py-1.5 mb-0.5 transition-colors leading-none ${modifiedBackgroundClass} ${rowHighlightClass} ${dragCursorClass}`}
         onMouseEnter={handleRowPointerEnter}
         onMouseLeave={handleRowPointerLeave}
         onPointerLeave={handleRowPointerLeave}
@@ -1095,7 +1100,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
             </div>
           ) : (
             // Display mode for OTTL
-            <div className="flex-1 flex items-center" style={{ paddingLeft: `${40 + attribute.depth * 16}px` }}>
+            <div className="flex-1 flex items-center pr-28" style={{ paddingLeft: `${40 + attribute.depth * 16}px` }}>
               <div className="flex items-center gap-2 flex-1">
                 <SquareTerminal className="h-4 w-4 text-gray-600" />
                 <span 
@@ -1112,7 +1117,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
               {/* Buttons (Undo for added/deleted attributes) for OTTL */}
               {isHovered && (
                 <div
-                  className="absolute right-0"
+                  className="absolute inset-y-0 right-0 flex items-center gap-1 bg-inherit px-2"
                   onMouseEnter={() => setIsActionHovered(true)}
                   onMouseLeave={() => setIsActionHovered(false)}
                   onPointerEnter={() => setIsActionHovered(true)}
@@ -1227,7 +1232,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         </div>
 
         {/* Value - always starts at the same position */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pr-28 leading-none">
           {isEditingAddStaticValue && isAddStatic ? (
             <div className="flex w-full items-center gap-1">
               <input
@@ -1376,7 +1381,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
         {/* Action buttons - positioned absolutely on the right */}
         {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && (
           <div
-            className="absolute right-0 flex items-center gap-1"
+            className="absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2"
             onMouseEnter={() => setIsActionHovered(true)}
             onMouseLeave={() => setIsActionHovered(false)}
             onPointerEnter={() => setIsActionHovered(true)}

@@ -531,14 +531,30 @@ function QueueItem({
         clearHoveredTransformationIds();
       }}
     >
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
       <div
-        className={`flex h-6 w-6 items-center justify-center text-gray-600 transition-opacity ${
+              className={`flex h-6 w-6 items-center justify-center text-gray-600 transition-opacity ${
           showActions ? 'opacity-100' : 'opacity-0'
-        } pointer-events-none`}
-        aria-hidden="true"
+              } cursor-grab`}
+              role="button"
+              aria-label="Drag to reorder"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                }
+              }}
           >
             <GripVertical className="h-4 w-4" />
       </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Drag to reorder</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <div className="relative flex min-w-0 flex-1 items-center pr-12">
         {details.isRawOTTL ? (
           <div className={`flex min-w-0 flex-1 items-center gap-2 text-xs ${isVisible ? textColorClass : 'text-gray-400'}`}>
@@ -580,7 +596,7 @@ function QueueItem({
         )}
       </div>
       <div
-        className={`absolute inset-y-0 right-1 flex items-center gap-1 transition-opacity ${
+        className={`absolute inset-y-0 right-1 flex items-center gap-1 bg-gray-900 px-2 transition-opacity ${
           showActions ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >

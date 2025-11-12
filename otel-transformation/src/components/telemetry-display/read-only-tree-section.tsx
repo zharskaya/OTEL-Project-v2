@@ -16,16 +16,16 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
   };
 
   return (
-    <div className="mb-3">
+    <div className="mb-2.5">
       {/* Section Header */}
       <button
         onClick={toggleExpand}
-        className="w-full flex items-center bg-gray-200 px-4 py-2 min-h-[44px] text-left hover:bg-gray-300 transition-colors cursor-pointer"
+        className="w-full flex items-center bg-gray-200 px-3 py-1.5 min-h-[36px] text-left hover:bg-gray-300 transition-colors cursor-pointer"
       >
-        <span className="mr-2 text-gray-700 text-sm leading-tight">
+        <span className="mr-2 text-gray-700 text-xs leading-none">
           {isExpanded ? '▾' : '▸'}
         </span>
-        <span className="font-semibold text-sm text-gray-900 leading-tight">
+        <span className="font-semibold text-xs text-gray-900 leading-none">
           {section.label}
         </span>
       </button>

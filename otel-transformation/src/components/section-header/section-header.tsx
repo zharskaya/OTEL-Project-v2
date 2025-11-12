@@ -28,23 +28,23 @@ export function SectionHeader({
   const updateCount = useUpdateCount(sectionId);
 
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-2 min-h-[44px] bg-gray-200 transition-colors hover:bg-gray-300">
+    <div className="flex items-center justify-between gap-3 px-3 py-1.5 min-h-[36px] bg-gray-200 transition-colors hover:bg-gray-300">
       {/* Left: Title with chevron */}
       <button
         onClick={onToggleExpand}
-        className="flex items-center gap-2 text-left font-semibold text-gray-900 focus:outline-none cursor-pointer"
+        className="flex items-center gap-1.5 text-left font-semibold text-gray-900 focus:outline-none cursor-pointer"
       >
-        <span className="text-gray-700 text-sm leading-tight">
+        <span className="text-gray-700 text-xs leading-none">
           {isExpanded ? '▾' : '▸'}
         </span>
-        <span className="text-sm leading-tight">{title}</span>
+        <span className="text-xs leading-none text-gray-800">{title}</span>
       </button>
 
       {/* Right: Update count + Action buttons */}
-      <div className="flex items-center gap-4 ml-auto">
+      <div className="flex items-center gap-3 ml-auto">
         {/* Update count (if any) */}
         {updateCount > 0 && (
-          <span className="text-xs font-medium text-gray-900 uppercase leading-tight">
+          <span className="text-[11px] font-medium text-gray-900 uppercase leading-none">
             {updateCount} {updateCount === 1 ? 'change' : 'changes'}
           </span>
         )}
