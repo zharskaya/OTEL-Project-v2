@@ -585,29 +585,29 @@ function QueueItem({
         }`}
       >
         {isRawOttlTransformation && onEditRawOttl && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleEditRawOttl}
-                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label="Edit raw OTTL"
-                >
-                  <PenLine className="h-4 w-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Edit raw OTTL transformation</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
+                  onClick={handleEditRawOttl}
+                  className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  aria-label="Edit raw OTTL"
+                >
+                  <PenLine className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+                <p>Edit raw OTTL transformation</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
                 onClick={() => onToggleVisibility(transformation)}
                 className={`rounded-md p-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isVisible
@@ -617,13 +617,13 @@ function QueueItem({
                 aria-label={isVisible ? 'Disable transformation' : 'Enable transformation'}
               >
                 {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
               <p>{isVisible ? 'Disable transformation' : 'Enable transformation'}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
