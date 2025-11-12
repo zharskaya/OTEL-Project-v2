@@ -46,6 +46,7 @@ import {
   type AddStaticParams,
   type AddSubstringParams,
   type DeleteParams,
+  type DeleteGroupParams,
   type MaskParams,
   type RenameKeyParams,
   type RenamePrefixParams,
@@ -614,6 +615,17 @@ function QueueItem({
         pushUnique(outputCandidates, params.movedToPath);
         break;
       }
+      case TransformationType.DELETE_GROUP: {
+        const params = transformation.params as DeleteGroupParams;
+        const firstAttribute = params.attributes[0];
+        if (firstAttribute) {
+          pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, firstAttribute.key));
+          pushUnique(inputCandidates, firstAttribute.path);
+          pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, firstAttribute.key));
+          pushUnique(outputCandidates, firstAttribute.path);
+        }
+        break;
+      }
       case TransformationType.MASK: {
         const params = transformation.params as MaskParams;
         pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
@@ -985,6 +997,26 @@ function getRowDetails(transformation: Transformation): RowDetails {
         description: (
           <span className={transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400'}>
             {(keyLabel ?? '').trim() || '--'}
+          </span>
+        ),
+        actionClassName: getActionClassName('DELETE'),
+      };
+    }
+    case TransformationType.DELETE_GROUP: {
+      const params = transformation.params as DeleteGroupParams;
+      const sectionLabel = formatSectionTitle(transformation.sectionId);
+      const groupLabel = params.groupLabel || params.groupId;
+      const textClassName =
+        transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400';
+      return {
+        action: 'DELETE',
+        section: undefined,
+        description: (
+          <span className="flex flex-col leading-tight">
+            <span className={`text-xs font-semibold uppercase tracking-wide ${textClassName}`}>
+              {sectionLabel}
+            </span>
+            <span className={`font-mono text-xs ${textClassName}`}>{groupLabel}</span>
           </span>
         ),
         actionClassName: getActionClassName('DELETE'),

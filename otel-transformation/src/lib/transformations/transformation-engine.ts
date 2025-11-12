@@ -134,10 +134,19 @@ export class TransformationEngine {
       }
       
       case TransformationType.DELETE: {
-        // Delete the attribute
         const key = params.attributeKey;
         const sectionId = transformation.sectionId;
-        
+        const modKey = `${sectionId}:${key}`;
+        if (!modifications.has(modKey)) {
+          modifications.set(modKey, []);
+        }
+        modifications.get(modKey)!.push({
+          transformationId: transformation.id,
+          type: 'delete',
+          label: 'DELETE',
+          color: ModificationColor.RED,
+        });
+
         if (sectionId.includes('resource')) {
           data.resource.attributes = data.resource.attributes.filter(attr => attr.key !== key);
         } else if (sectionId.includes('span-attributes')) {
@@ -152,6 +161,48 @@ export class TransformationEngine {
             delete spanRecord[key];
           }
         }
+        break;
+      }
+      
+      case TransformationType.DELETE_GROUP: {
+        const sectionId = transformation.sectionId;
+        const attributeEntries = params.attributes as Array<{ key: string }>;
+
+        attributeEntries.forEach(({ key }) => {
+          const modKey = `${sectionId}:${key}`;
+          if (!modifications.has(modKey)) {
+            modifications.set(modKey, []);
+          }
+          modifications.get(modKey)!.push({
+            transformationId: transformation.id,
+            type: 'delete',
+            label: 'DELETE',
+            color: ModificationColor.RED,
+          });
+        });
+
+        const removeAttribute = (key: string) => {
+          if (sectionId.includes('resource')) {
+            data.resource.attributes = data.resource.attributes.filter(attr => attr.key !== key);
+            return;
+          }
+          if (sectionId.includes('span-attributes')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              span.attributes = span.attributes.filter(attr => attr.key !== key);
+            }
+            return;
+          }
+          if (sectionId.includes('span-info')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              const spanRecord = span as unknown as Record<string, unknown>;
+              delete spanRecord[key];
+            }
+          }
+        };
+
+        attributeEntries.forEach(({ key }) => removeAttribute(key));
         break;
       }
       

@@ -19,7 +19,12 @@ import { TreeSection } from './tree-section';
 import { AttributeRow } from './attribute-row';
 import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
-import { TransformationType, TransformationStatus } from '@/types/transformation-types';
+import {
+  TransformationType,
+  TransformationStatus,
+  type DeleteParams,
+  type DeleteGroupParams,
+} from '@/types/transformation-types';
 
 interface TelemetryTreeProps {
   tree: TelemetryTreeType;
@@ -231,11 +236,17 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         return;
       }
 
-      const isDeleted = transformations.some(
-        (t) => t.type === TransformationType.DELETE
-          && (t.params as any).attributeKey === draggedKey
-          && (t.params as any).attributePath === draggedAttr.path
-      );
+      const isDeleted = transformations.some((transformation) => {
+        if (transformation.type === TransformationType.DELETE) {
+          const params = transformation.params as DeleteParams;
+          return params.attributeKey === draggedKey && params.attributePath === draggedAttr.path;
+        }
+        if (transformation.type === TransformationType.DELETE_GROUP) {
+          const params = transformation.params as DeleteGroupParams;
+          return params.attributes.some(({ key, path }) => key === draggedKey && path === draggedAttr.path);
+        }
+        return false;
+      });
 
       if (isDeleted || !sourceSection || !destSection) {
         return;

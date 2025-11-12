@@ -20,6 +20,7 @@ export enum TransformationType {
   ADD_STATIC = 'add-static',
   ADD_SUBSTRING = 'add-substring',
   DELETE = 'delete',
+  DELETE_GROUP = 'delete-group',
   MASK = 'mask',
   RENAME_KEY = 'rename-key',
   RENAME_PREFIX = 'rename-prefix',
@@ -36,6 +37,7 @@ export type TransformationParams =
   | AddStaticParams
   | AddSubstringParams
   | DeleteParams
+  | DeleteGroupParams
   | MaskParams
   | RenameKeyParams
   | RenamePrefixParams
@@ -67,10 +69,21 @@ export interface DeleteParams {
   attributePath: string;
   attributeKey: string;
   attributeValue?: string;
+  groupId?: string;
   movedToSectionId?: string;
   movedToSectionLabel?: string;
   movedToPath?: string;
   pairedTransformationId?: string;
+}
+
+export interface DeleteGroupParams {
+  type: TransformationType.DELETE_GROUP;
+  groupId: string;
+  groupLabel: string;
+  attributes: Array<{
+    path: string;
+    key: string;
+  }>;
 }
 
 export interface MaskParams {

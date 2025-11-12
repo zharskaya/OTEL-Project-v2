@@ -25,6 +25,7 @@ import {
   TransformationStatus,
   type AddStaticParams,
   type DeleteParams,
+  type DeleteGroupParams,
   type RenameKeyParams,
   type Transformation,
 } from '@/types/transformation-types';
@@ -209,12 +210,17 @@ export function AttributeRow({
   });
 
   // Check if this attribute has a delete transformation
-  const deleteTransformation = transformations.find(
-    (t) =>
-      t.type === TransformationType.DELETE &&
-      (t.params as any).attributeKey === attribute.key &&
-      (t.params as any).attributePath === attribute.path
-  );
+  const deleteTransformation = transformations.find((transformation) => {
+    if (transformation.type === TransformationType.DELETE) {
+      const params = transformation.params as DeleteParams;
+      return params.attributeKey === attribute.key && params.attributePath === attribute.path;
+    }
+    if (transformation.type === TransformationType.DELETE_GROUP) {
+      const params = transformation.params as DeleteGroupParams;
+      return params.attributes.some(({ path }) => path === attribute.path);
+    }
+    return false;
+  });
 
   // Check if this attribute has a mask transformation
   const maskTransformation = transformations.find(
@@ -276,6 +282,7 @@ export function AttributeRow({
   const isRenameActive = renameTransformation?.status === TransformationStatus.ACTIVE;
 
   const isDeleted = forceDeleted || Boolean(deleteTransformation);
+  const isGroupDeletion = deleteTransformation?.type === TransformationType.DELETE_GROUP;
   const isMasked = Boolean(maskTransformation);
   const isRenamed = Boolean(renameTransformation);
   const isAdded =
@@ -300,7 +307,10 @@ export function AttributeRow({
   const isAddSubstring =
     Boolean(addTransformationRecord) && activeModificationTypes.has('add-substring');
   const hasUndoableTransformation = Boolean(
-    renameTransformation || maskTransformation || addTransformationRecord || deleteTransformation
+    renameTransformation ||
+      maskTransformation ||
+      addTransformationRecord ||
+      (!isGroupDeletion && deleteTransformation)
   );
   const addStaticInitialInput = useMemo(() => {
     if (!isAddStatic || !addTransformationRecord) {
@@ -317,7 +327,7 @@ export function AttributeRow({
     activeModifications.length > 0 ||
     attribute.isRawOTTL;
 
-  const deleteParams = deleteTransformation?.params as DeleteParams | undefined;
+  const deleteParams = deleteTransformation?.params as DeleteParams | DeleteGroupParams | undefined;
   const addStaticParams = isAddStatic && addTransformationRecord
     ? (addTransformationRecord.params as AddStaticParams)
     : undefined;
@@ -365,7 +375,8 @@ export function AttributeRow({
         )
       : [];
   const moveTransformationIds = new Set(moveTransformations.map((transformation) => transformation.id));
-  const movedInAttributePath = deleteParams?.movedToPath;
+  const movedInAttributePath =
+    deleteParams && 'movedToPath' in deleteParams ? deleteParams.movedToPath : undefined;
   const additionalTransformationsOnMovedIn =
     movedInAttributePath != null
       ? transformations.filter((transformation) => {
@@ -376,10 +387,12 @@ export function AttributeRow({
         })
       : [];
 
-  const isMovedOut = Boolean(deleteParams?.movedToSectionId);
+  const isMovedOut =
+    deleteParams && 'movedToSectionId' in deleteParams ? Boolean(deleteParams.movedToSectionId) : false;
 
-  const movedToSectionLabel = isMovedOut && deleteParams
-    ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
+  const movedToSectionLabel =
+    isMovedOut && deleteParams && 'movedToSectionLabel' in deleteParams
+      ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
     : null;
 
   const movedFromSectionLabel = isAddStatic && addStaticParams
@@ -511,7 +524,7 @@ export function AttributeRow({
       removeTransformation(addTransformationRecord.id);
       return;
     }
-    if (deleteTransformation) {
+    if (deleteTransformation && !isGroupDeletion) {
       removeTransformation(deleteTransformation.id);
     }
   };
@@ -851,6 +864,9 @@ export function AttributeRow({
 
   const getModificationLabel = () => {
     if (isDeleted) {
+      if (isGroupDeletion) {
+        return null;
+      }
       const text = isMovedOut ? 'MOVED OUT' : 'DELETE';
       const deleteBadgeClass = isDeleteActive
         ? 'bg-red-600 text-white'
@@ -1127,7 +1143,7 @@ export function AttributeRow({
         onBlurCapture={handleRowPointerLeave}
       >
         {/* Drag handle - positioned absolutely on the left, vertically centered, shown on hover */}
-        {isHovered && (
+        {isHovered && !isDeleted && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1288,9 +1304,9 @@ export function AttributeRow({
               </Tooltip>
             </TooltipProvider>
           ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
                   <span
                     className={`font-mono text-xs leading-none ${isDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'}`}
                     onClick={() => {
@@ -1302,14 +1318,14 @@ export function AttributeRow({
                   >
                     {displayKey ?? attribute.key}
                   </span>
-                </TooltipTrigger>
+                      </TooltipTrigger>
                 {isHovered && !isDeleted && (
                   <TooltipContent>
                     <p>Click to rename</p>
                   </TooltipContent>
                 )}
-              </Tooltip>
-            </TooltipProvider>
+                    </Tooltip>
+                  </TooltipProvider>
           )}
             </div>
           </div>
@@ -1463,7 +1479,7 @@ export function AttributeRow({
         {getModificationLabel()}
 
         {/* Action buttons - positioned absolutely on the right */}
-        {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && (
+        {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && !isGroupDeletion && (
           <div
             className="absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2"
             onMouseEnter={() => setIsActionHovered(true)}

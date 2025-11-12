@@ -27,6 +27,7 @@ import {
   type RenameKeyParams,
   type RenamePrefixParams,
   type DeleteParams,
+  type DeleteGroupParams,
   type Transformation,
 } from '@/types/transformation-types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -557,6 +558,24 @@ function AttributeGroupRow({
     return map;
   }, [transformations]);
 
+  const deleteTransformationByAttributePath = React.useMemo(() => {
+    const map = new Map<string, Transformation>();
+    transformations.forEach((transformation) => {
+      if (transformation.type === TransformationType.DELETE) {
+        const params = transformation.params as DeleteParams;
+        map.set(params.attributePath, transformation);
+        return;
+      }
+      if (transformation.type === TransformationType.DELETE_GROUP) {
+        const params = transformation.params as DeleteGroupParams;
+        params.attributes.forEach(({ path }) => {
+          map.set(path, transformation);
+        });
+      }
+    });
+    return map;
+  }, [transformations]);
+
   const isHighlighted =
     (renameTransformation && highlightedTransformationIds.includes(renameTransformation.id)) || false;
 
@@ -721,20 +740,23 @@ function AttributeGroupRow({
 
     const idsToRemove = new Set<string>();
 
-    groupedAttributes.forEach((attribute) => {
-      transformations.forEach((transformation) => {
-        if (transformation.type !== TransformationType.DELETE) {
-          return;
-        }
-
+    transformations.forEach((transformation) => {
+      if (transformation.type === TransformationType.DELETE) {
         const params = transformation.params as DeleteParams;
-        if (
-          params.attributePath === attribute.path &&
-          params.attributeKey === attribute.key
-        ) {
+        const matchesAttribute = groupedAttributes.some(
+          (attribute) => attribute.path === params.attributePath && attribute.key === params.attributeKey
+        );
+        if (matchesAttribute) {
           idsToRemove.add(transformation.id);
         }
-      });
+        return;
+      }
+      if (transformation.type === TransformationType.DELETE_GROUP) {
+        const params = transformation.params as DeleteGroupParams;
+        if (params.groupId === node.id) {
+          idsToRemove.add(transformation.id);
+        }
+      }
     });
 
     idsToRemove.forEach((id) => removeTransformation(id));
@@ -743,27 +765,65 @@ function AttributeGroupRow({
   const handleDeleteGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
 
-    groupedAttributes.forEach((attribute, index) => {
-      const isAlreadyDeleted = attribute.modifications.some((modification) => modification.type === 'delete');
-      if (isAlreadyDeleted) {
+    const existingGroupTransformation = transformations.find(
+      (transformation) =>
+        transformation.type === TransformationType.DELETE_GROUP &&
+        ((transformation.params as DeleteGroupParams).groupId === node.id)
+    );
+    if (existingGroupTransformation) {
+      return;
+    }
+
+    const attributesToDelete = groupedAttributes.filter((attribute) => {
+      const existingTransformation = deleteTransformationByAttributePath.get(attribute.path);
+      if (!existingTransformation) {
+        return true;
+      }
+      if (existingTransformation.type === TransformationType.DELETE_GROUP) {
+        return false;
+      }
+      return true;
+    });
+
+    if (attributesToDelete.length === 0) {
+      return;
+    }
+
+    const timestamp = Date.now();
+    const groupTransformationId = `t-${timestamp}-delete-group-${node.id}`;
+
+    const existingSingleDeletes = new Set<string>();
+    transformations.forEach((transformation) => {
+      if (transformation.type !== TransformationType.DELETE) {
         return;
       }
+      const params = transformation.params as DeleteParams;
+      const matchesAttribute = attributesToDelete.some(
+        (attribute) => attribute.path === params.attributePath && attribute.key === params.attributeKey
+      );
+      if (matchesAttribute) {
+        existingSingleDeletes.add(transformation.id);
+      }
+    });
 
-      const attributeValue = attribute.value ?? '';
-      addTransformation({
-        id: `t-${Date.now()}-${attribute.id}-${index}`,
-        type: TransformationType.DELETE,
-        order: 0,
-        sectionId: attribute.sectionId,
-        createdAt: new Date(),
-        status: TransformationStatus.ACTIVE,
-        params: {
-          type: TransformationType.DELETE,
-          attributePath: attribute.path,
-          attributeKey: attribute.key,
-          attributeValue,
-        },
-      });
+    existingSingleDeletes.forEach((id) => removeTransformation(id));
+
+    addTransformation({
+      id: groupTransformationId,
+      type: TransformationType.DELETE_GROUP,
+      order: 0,
+      sectionId,
+      createdAt: new Date(),
+      status: TransformationStatus.ACTIVE,
+      params: {
+        type: TransformationType.DELETE_GROUP,
+        groupId: node.id,
+        groupLabel: displayLabel,
+        attributes: attributesToDelete.map((attribute) => ({
+          path: attribute.path,
+          key: attribute.key,
+        })),
+      },
     });
 
     if (renameTransformation) {
@@ -792,7 +852,7 @@ function AttributeGroupRow({
 
   const handleRenameGroupFromLabel = (event: React.MouseEvent<HTMLSpanElement>) => {
     event.stopPropagation();
-    if (isRenaming) {
+    if (isRenaming || isGroupDeleted) {
       return;
     }
     setDraftName(displayLabel);
@@ -844,21 +904,60 @@ function AttributeGroupRow({
     handleRenameSave();
   };
 
-  const showActionButtons = isRenaming || isHovered;
+  const hasDirectAttributes = React.useMemo(
+    () => node.children.some((child) => child.type === 'attribute'),
+    [node]
+  );
+  const isGroupDeleted =
+    groupedAttributes.length > 0 &&
+    groupedAttributes.every(
+      (attribute) =>
+        deleteTransformationByAttributePath.has(attribute.path) ||
+        attribute.modifications.some((modification) => modification.type === TransformationType.DELETE)
+    );
+  const groupDeleteTransformations = groupedAttributes
+    .map((attribute) => deleteTransformationByAttributePath.get(attribute.path))
+    .filter((transformation): transformation is Transformation => Boolean(transformation));
+  const groupDeleteParams = groupDeleteTransformations.map(
+    (transformation) => transformation.params as DeleteParams
+  );
+  const isGroupDeleteActive =
+    groupDeleteTransformations.length > 0 &&
+    groupDeleteTransformations.every((transformation) => transformation.status === TransformationStatus.ACTIVE);
+  const isDeletedByAncestor =
+    groupDeleteParams.length > 0 &&
+    groupDeleteParams.every((params) => params.groupId && params.groupId !== node.id);
+  const allowGroupActions = (!isGroupDeleted || hasDirectAttributes) && !isDeletedByAncestor;
+  const showActionButtons = allowGroupActions && (isRenaming || isHovered);
   const showRenameBadge = Boolean(renamePrefixParams);
+  const showDeleteBadge = isGroupDeleted && hasDirectAttributes && !isDeletedByAncestor;
   const renameBadgeClassName =
     showRenameBadge && renameTransformation?.status !== TransformationStatus.ACTIVE
       ? 'bg-gray-300/60 text-gray-500'
       : 'bg-indigo-600 text-white';
+  const deleteBadgeClassName = isGroupDeleteActive ? 'bg-red-600 text-white' : 'bg-gray-300/60 text-gray-500';
   const isGroupRenamed = Boolean(renamePrefixParams);
-  const isGroupDeleted =
-    groupedAttributes.length > 0 &&
-    groupedAttributes.every((attribute) =>
-      attribute.modifications.some((modification) => modification.type === 'delete')
-    );
-  const baseBackgroundClass = isGroupRenamed ? 'bg-gray-100' : '';
+  const baseBackgroundClass = isGroupDeleted || isGroupRenamed ? 'bg-gray-100' : '';
   const hoverBackgroundClass = isHovered || isHighlighted ? 'bg-gray-300/60' : '';
-  const rowBackgroundClass = hoverBackgroundClass || baseBackgroundClass;
+  const rowBackgroundClass = [baseBackgroundClass, hoverBackgroundClass].filter(Boolean).join(' ');
+  const canRenameGroup = allowGroupActions && !isGroupDeleted;
+  const labelColorClass = isGroupDeleted ? 'text-gray-400 line-through' : 'text-gray-900';
+  const labelBaseClass = `font-mono text-xs leading-none ${labelColorClass}`;
+  const badges: React.ReactNode[] = [];
+  if (showDeleteBadge) {
+    badges.push(
+      <span key="delete" className={`${GROUP_BADGE_CLASS} ${deleteBadgeClassName}`}>
+        DELETE
+      </span>
+    );
+  }
+  if (showRenameBadge) {
+    badges.push(
+      <span key="rename" className={`${GROUP_BADGE_CLASS} ${renameBadgeClassName}`}>
+        RENAME
+      </span>
+    );
+  }
 
   return (
     <div
@@ -922,7 +1021,7 @@ function AttributeGroupRow({
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : canRenameGroup ? (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -930,7 +1029,7 @@ function AttributeGroupRow({
                         className="flex cursor-pointer flex-col gap-1 leading-none"
                         onClick={handleRenameGroupFromLabel}
                       >
-                        <span className="font-mono text-xs text-gray-900 leading-none">{displayLabel}</span>
+                        <span className={`${labelBaseClass} cursor-pointer`}>{displayLabel}</span>
                         {renamePrefixParams ? (
                           <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
                             {renamePrefixParams.oldPrefix}
@@ -943,6 +1042,15 @@ function AttributeGroupRow({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              ) : (
+                <span className="flex cursor-default flex-col gap-1 leading-none">
+                  <span className={`${labelBaseClass} cursor-default`}>{displayLabel}</span>
+                  {renamePrefixParams ? (
+                    <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                      {renamePrefixParams.oldPrefix}
+                    </span>
+                  ) : null}
+                </span>
               )}
             </div>
           </div>
@@ -950,98 +1058,96 @@ function AttributeGroupRow({
             {groupedAttributes.length} {groupedAttributes.length === 1 ? 'key' : 'keys'}
           </div>
         </div>
-        {showRenameBadge ? (
-          <div className="flex items-center gap-2 pr-2">
-            <span className={`${GROUP_BADGE_CLASS} ${renameBadgeClassName}`}>RENAME</span>
-          </div>
-        ) : null}
+        {badges.length > 0 ? <div className="flex items-center gap-2 pr-2">{badges}</div> : null}
       </div>
-      <div
-        className={`absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2 transition-opacity ${
-          showActionButtons ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        } ${isRenaming ? 'opacity-100 pointer-events-auto' : ''}`}
-      >
-        {isRenaming ? null : (
-          <>
-            {isGroupDeleted ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handleUndoDeleteGroup}
-                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                      aria-label="Undo delete"
-                    >
-                      <Undo2 className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Undo delete</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <>
+      {allowGroupActions ? (
+        <div
+          className={`absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2 transition-opacity ${
+            showActionButtons ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          } ${isRenaming ? 'opacity-100 pointer-events-auto' : ''}`}
+        >
+          {isRenaming ? null : (
+            <>
+              {isGroupDeleted ? (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={handleRenameGroup}
+                        onClick={handleUndoDeleteGroup}
                         className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                        aria-label="Rename key"
+                        aria-label="Undo delete"
                       >
-                        <Wrench className="h-4 w-4" />
+                        <Undo2 className="h-4 w-4" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Rename key</p>
+                      <p>Undo delete</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                {isGroupRenamed ? (
+              ) : (
+                <>
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          onClick={handleUndoRenameGroup}
+                          onClick={handleRenameGroup}
                           className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                          aria-label="Undo rename"
+                          aria-label="Rename key"
                         >
-                          <Undo2 className="h-4 w-4" />
+                          <Wrench className="h-4 w-4" />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Undo rename</p>
+                        <p>Rename key</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                ) : (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={handleDeleteGroup}
-                          className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-                          aria-label="Delete key prefix"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Delete key prefix</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
+                  {isGroupRenamed ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={handleUndoRenameGroup}
+                            className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                            aria-label="Undo rename"
+                          >
+                            <Undo2 className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Undo rename</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={handleDeleteGroup}
+                            className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                            aria-label="Delete key prefix"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Delete key prefix</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
