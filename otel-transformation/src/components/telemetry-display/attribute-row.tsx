@@ -32,6 +32,7 @@ import { SyntaxHighlighter } from './syntax-highlighter';
 import { useTextSelection, TextSelection } from '@/lib/hooks/use-text-selection';
 import { MaskValueSelector } from '@/components/transformations/mask-value-selector';
 import { RenameKeyForm } from '@/components/transformations/rename-key-form';
+import { buildAttributeHighlightTokens, createSectionKeyToken } from './highlight-utils';
 
 const BADGE_BASE_CLASS = 'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
 
@@ -123,6 +124,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     clearHoveredTransformationIds,
     setHoveredInputAttributeId,
     clearHoveredInputAttributeId,
+    setHoveredOutputAttributeId,
+    clearHoveredOutputAttributeId,
   } = useTransformationHighlightActions();
   const highlightedTransformationIds = useHighlightedTransformationIds();
   const hoveredInputAttributeId = useHoveredInputAttributeId();
@@ -291,6 +294,35 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   const renameParams = renameTransformation
     ? (renameTransformation.params as RenameKeyParams)
     : undefined;
+
+  const highlightTokens = buildAttributeHighlightTokens(
+    {
+      id: attribute.id,
+      path: attribute.path,
+      sectionId: attribute.sectionId,
+      key: attribute.key,
+    },
+    [renameParams?.newKey]
+  );
+
+  const baseSectionKeyToken = React.useMemo(
+    () => createSectionKeyToken(attribute.sectionId, attribute.key),
+    [attribute.sectionId, attribute.key]
+  );
+  const renameOldKeyToken = React.useMemo(() => {
+    if (!renameParams?.oldKey) {
+      return null;
+    }
+    return createSectionKeyToken(attribute.sectionId, renameParams.oldKey);
+  }, [attribute.sectionId, renameParams?.oldKey]);
+  const renameNewKeyToken = React.useMemo(() => {
+    if (!renameParams?.newKey) {
+      return null;
+    }
+    return createSectionKeyToken(attribute.sectionId, renameParams.newKey);
+  }, [attribute.sectionId, renameParams?.newKey]);
+  const primaryInputHighlightToken = renameOldKeyToken ?? baseSectionKeyToken ?? attribute.id;
+  const primaryOutputHighlightToken = renameNewKeyToken ?? baseSectionKeyToken ?? attribute.id;
 
   const movePairId =
     deleteTransformation?.pairedTransformationId ??
@@ -484,6 +516,15 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     if (!activeSelection) return;
 
     if (onRequestSubstring) {
+      setIsHovered(false);
+      setIsValueHovered(false);
+      setIsActionHovered(false);
+      setHoverSelection(null);
+      cancelHoverHide();
+      clearSelection();
+      clearHoveredInputAttributeId();
+      clearHoveredOutputAttributeId();
+      clearHoveredTransformationIds();
       const substringEndValue =
         activeSelection.end >= activeSelection.fullText.length ? 'end' : activeSelection.end;
       onRequestSubstring({
@@ -668,7 +709,8 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
 
   const handleRowPointerEnter = () => {
     setIsHovered(true);
-    setHoveredInputAttributeId(attribute.id);
+    setHoveredInputAttributeId(primaryInputHighlightToken);
+    setHoveredOutputAttributeId(primaryOutputHighlightToken);
     if (relatedTransformationIds.length > 0) {
       setHoveredTransformationIds(relatedTransformationIds);
     } else {
@@ -677,15 +719,18 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
   };
 
   const matchesHoveredInput =
-    hoveredInputAttributeId === attribute.id ||
-    hoveredInputAttributeId === attribute.path;
+    hoveredInputAttributeId != null && highlightTokens.has(hoveredInputAttributeId);
+  const matchesHoveredOutput =
+    hoveredOutputAttributeId != null && highlightTokens.has(hoveredOutputAttributeId);
 
   const handleRowPointerLeave = () => {
     setIsHovered(false);
     setIsValueHovered(false);
-    const inputShouldClear = matchesHoveredInput;
-    if (inputShouldClear) {
+    if (hoveredInputAttributeId === primaryInputHighlightToken) {
       clearHoveredInputAttributeId();
+    }
+    if (hoveredOutputAttributeId === primaryOutputHighlightToken) {
+      clearHoveredOutputAttributeId();
     }
     if (relatedTransformationIds.length > 0) {
       const relatedSet = new Set(relatedTransformationIds);
@@ -718,13 +763,20 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
       if (matchesHoveredInput) {
         clearHoveredInputAttributeId();
       }
+      if (hoveredOutputAttributeId === primaryOutputHighlightToken) {
+        clearHoveredOutputAttributeId();
+      }
     };
   }, [
     clearHoveredTransformationIds,
     clearHoveredInputAttributeId,
+    clearHoveredOutputAttributeId,
     highlightedTransformationIds,
     hoveredInputAttributeId,
+    hoveredOutputAttributeId,
     relatedTransformationIds,
+    matchesHoveredInput,
+    primaryOutputHighlightToken,
   ]);
 
   const selectEntireValue = () => {
@@ -919,7 +971,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
     [highlightedTransformationIds, relatedTransformationIds]
   );
   const isHighlightedByInput = matchesHoveredInput;
-  const isHighlightedByOutput = hoveredOutputAttributeId === attribute.id;
+  const isHighlightedByOutput = matchesHoveredOutput;
 
   const isRowHoverActive =
     isHovered || shouldShowMaskSelector || isHighlightedByQueue || isEditingAddStaticValue;

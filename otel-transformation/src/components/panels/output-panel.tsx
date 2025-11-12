@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Download } from 'lucide-react';
+import { useLastExecutionResult } from '@/lib/state/hooks';
 
 interface OutputPanelProps {
   children: React.ReactNode;
@@ -16,6 +17,14 @@ export function OutputPanel({
   hasChanges = false,
   executionTime,
 }: OutputPanelProps) {
+  const lastExecutionResult = useLastExecutionResult();
+  const hasExecuted = lastExecutionResult != null;
+  const appliedTransformationCount = lastExecutionResult?.appliedTransformations ?? 0;
+  const appliedLabel =
+    appliedTransformationCount > 0
+      ? `${appliedTransformationCount} transformations applied`
+      : 'No transformations applied';
+
   const handleDownload = () => {
     alert('Not included in this demo');
   };
@@ -26,6 +35,11 @@ export function OutputPanel({
       <div className="flex items-center justify-between bg-white border-b border-gray-100 px-2 py-1 min-h-[44px]">
         <div className="flex items-center gap-3">
           <h2 className="font-semibold text-xs tracking-wide text-gray-900">OUTPUT</h2>
+          {hasExecuted && (
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">
+              {appliedLabel}
+            </span>
+          )}
         </div>
         <div className="flex gap-2 min-w-0">
           {!isEmpty && (

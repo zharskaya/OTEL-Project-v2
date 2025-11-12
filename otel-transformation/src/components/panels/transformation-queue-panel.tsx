@@ -35,6 +35,8 @@ import {
   useTransformationActions,
   useHighlightedTransformationIds,
   useTransformationHighlightActions,
+  useHoveredInputAttributeId,
+  useHoveredOutputAttributeId,
 } from '@/lib/state/hooks';
 import {
   Transformation,
@@ -42,7 +44,10 @@ import {
   TransformationStatus,
   type RawOTTLParams,
   type AddStaticParams,
+  type AddSubstringParams,
   type DeleteParams,
+  type MaskParams,
+  type RenameKeyParams,
 } from '@/types/transformation-types';
 import {
   Trash2,
@@ -54,6 +59,7 @@ import {
 } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
+import { createSectionKeyToken } from '@/components/telemetry-display/highlight-utils';
 
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
@@ -470,8 +476,107 @@ function QueueItem({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const highlightedTransformationIds = useHighlightedTransformationIds();
-  const { setHoveredTransformationIds, clearHoveredTransformationIds } =
-    useTransformationHighlightActions();
+  const hoveredInputAttributeId = useHoveredInputAttributeId();
+  const hoveredOutputAttributeId = useHoveredOutputAttributeId();
+  const {
+    setHoveredTransformationIds,
+    clearHoveredTransformationIds,
+    setHoveredInputAttributeId,
+    clearHoveredInputAttributeId,
+    setHoveredOutputAttributeId,
+    clearHoveredOutputAttributeId,
+  } = useTransformationHighlightActions();
+
+  const { inputToken, outputToken } = useMemo(() => {
+    const inputCandidates: string[] = [];
+    const outputCandidates: string[] = [];
+    const pushUnique = (list: string[], value: string | null | undefined) => {
+      if (!value) {
+        return;
+      }
+      if (!list.includes(value)) {
+        list.push(value);
+      }
+    };
+
+    switch (transformation.type) {
+      case TransformationType.ADD_STATIC: {
+        const params = transformation.params as AddStaticParams;
+        const key = params.key;
+        if (key) {
+          pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, key));
+        }
+        pushUnique(inputCandidates, params.movedFromPath);
+        if (params.movedFromSectionId && key) {
+          pushUnique(inputCandidates, createSectionKeyToken(params.movedFromSectionId, key));
+        }
+        pushUnique(outputCandidates, params.movedToPath);
+        break;
+      }
+      case TransformationType.ADD_SUBSTRING: {
+        const params = transformation.params as AddSubstringParams;
+        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.newKey));
+        pushUnique(inputCandidates, params.sourceAttributePath);
+        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.sourceKey));
+        break;
+      }
+      case TransformationType.DELETE: {
+        const params = transformation.params as DeleteParams;
+        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
+        pushUnique(inputCandidates, params.attributePath);
+        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
+        pushUnique(outputCandidates, params.attributePath);
+        if (params.movedToSectionId && params.attributeKey) {
+          pushUnique(outputCandidates, createSectionKeyToken(params.movedToSectionId, params.attributeKey));
+        }
+        pushUnique(outputCandidates, params.movedToPath);
+        break;
+      }
+      case TransformationType.MASK: {
+        const params = transformation.params as MaskParams;
+        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
+        pushUnique(outputCandidates, params.attributePath);
+        pushUnique(inputCandidates, params.attributePath);
+        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
+        break;
+      }
+      case TransformationType.RENAME_KEY: {
+        const params = transformation.params as RenameKeyParams;
+        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.newKey));
+        pushUnique(outputCandidates, params.attributePath);
+        pushUnique(inputCandidates, params.attributePath);
+        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.oldKey));
+        break;
+      }
+      default:
+        break;
+    }
+
+    return {
+      inputToken: inputCandidates[0] ?? null,
+      outputToken: outputCandidates[0] ?? null,
+    };
+  }, [transformation]);
+
+  const applyHoverHighlights = () => {
+    setHoveredTransformationIds([transformation.id]);
+    if (inputToken) {
+      setHoveredInputAttributeId(inputToken);
+    }
+    if (outputToken) {
+      setHoveredOutputAttributeId(outputToken);
+    }
+  };
+
+  const clearHoverHighlights = () => {
+    clearHoveredTransformationIds();
+    if (inputToken && hoveredInputAttributeId === inputToken) {
+      clearHoveredInputAttributeId();
+    }
+    if (outputToken && hoveredOutputAttributeId === outputToken) {
+      clearHoveredOutputAttributeId();
+    }
+  };
 
   const details = getRowDetails(transformation);
   const labelText = details.action;
@@ -516,19 +621,19 @@ function QueueItem({
       className={`relative mb-0.5 flex w-full items-center gap-1.5 px-1.5 py-1.5 leading-none transition-colors ${baseBackgroundClass} ${dragStateClass} cursor-grab active:cursor-grabbing`}
       onMouseEnter={() => {
         setIsHovered(true);
-        setHoveredTransformationIds([transformation.id]);
+        applyHoverHighlights();
       }}
       onMouseLeave={() => {
         setIsHovered(false);
-        clearHoveredTransformationIds();
+        clearHoverHighlights();
       }}
       onFocusCapture={() => {
         setIsFocused(true);
-        setHoveredTransformationIds([transformation.id]);
+        applyHoverHighlights();
       }}
       onBlurCapture={() => {
         setIsFocused(false);
-        clearHoveredTransformationIds();
+        clearHoverHighlights();
       }}
     >
       <TooltipProvider>

@@ -28,7 +28,7 @@ export function SectionHeader({
   const updateCount = useUpdateCount(sectionId);
 
   return (
-    <div className="flex items-center justify-between gap-3 px-3 py-1.5 min-h-[36px] bg-gray-200 transition-colors hover:bg-gray-300">
+    <div className="flex items-center justify-between gap-3 px-3 py-1.5 min-h-[36px] bg-gray-200/80 transition-colors hover:bg-gray-200">
       {/* Left: Title with chevron */}
       <button
         onClick={onToggleExpand}

@@ -10,7 +10,8 @@ import {
   useHoveredOutputAttributeId,
   useTransformations,
 } from '@/lib/state/hooks';
-import type { Transformation, TransformationStatus } from '@/types/transformation-types';
+import type { Transformation, TransformationStatus, RenameKeyParams } from '@/types/transformation-types';
+import { buildAttributeHighlightTokens, createSectionKeyToken } from './highlight-utils';
 
 function getTransformationAttributePath(transformation: Transformation): string | undefined {
   const params = transformation.params as unknown as { [key: string]: unknown };
@@ -39,6 +40,8 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
   const {
     setHoveredTransformationIds,
     clearHoveredTransformationIds,
+    setHoveredInputAttributeId,
+    clearHoveredInputAttributeId,
     setHoveredOutputAttributeId,
     clearHoveredOutputAttributeId,
   } = useTransformationHighlightActions();
@@ -80,13 +83,67 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
     return ids;
   }, [attribute.path, transformations]);
 
+  const renameTransformation = React.useMemo(() => {
+    const renameModification = attribute.modifications.find(
+      (modification) => modification.type === 'rename-key' && modification.transformationId
+    );
+    if (!renameModification) {
+      return null;
+    }
+    return (
+      transformations.find(
+        (transformation) => transformation.id === renameModification.transformationId
+      ) ?? null
+    );
+  }, [attribute.modifications, transformations]);
+
+  const renameParams = React.useMemo(
+    () => (renameTransformation ? (renameTransformation.params as RenameKeyParams) : undefined),
+    [renameTransformation]
+  );
+
+  const highlightTokens = React.useMemo(
+    () =>
+      buildAttributeHighlightTokens(
+        {
+          id: attribute.id,
+          path: attribute.path,
+          sectionId: attribute.sectionId,
+          key: attribute.key,
+        },
+        renameParams ? [renameParams.oldKey] : []
+      ),
+    [attribute.id, attribute.path, attribute.sectionId, attribute.key, renameParams?.oldKey]
+  );
+
+  const renameSourceToken = React.useMemo(() => {
+    if (!renameParams) {
+      return null;
+    }
+    const sectionId = renameTransformation?.sectionId ?? attribute.sectionId;
+    return createSectionKeyToken(sectionId, renameParams.oldKey);
+  }, [attribute.sectionId, renameParams, renameTransformation?.sectionId]);
+
+  const sectionKeyToken = React.useMemo(
+    () => createSectionKeyToken(attribute.sectionId, attribute.key),
+    [attribute.sectionId, attribute.key]
+  );
+
+  const primaryInputHighlightTarget = renameSourceToken ?? sectionKeyToken ?? attribute.id;
+
   const isHighlightFromTransformations =
     relatedTransformationIds.some((id) => highlightedTransformationIds.includes(id));
   const isHighlightFromAdditional =
     additionalTransformationIds.size > 0 &&
     Array.from(additionalTransformationIds).some((id) => highlightedTransformationIds.includes(id));
-  const isHighlightedByInput = hoveredInputAttributeId === attribute.id;
-  const isHighlightedByOutput = hoveredOutputAttributeId === attribute.id;
+  const isHighlightedByInput =
+    hoveredInputAttributeId != null && highlightTokens.has(hoveredInputAttributeId);
+  const primaryOutputHighlightToken = React.useMemo(
+    () => sectionKeyToken ?? attribute.id,
+    [sectionKeyToken, attribute.id]
+  );
+  const isHighlightedByOutput =
+    hoveredOutputAttributeId != null && highlightTokens.has(hoveredOutputAttributeId);
   const isHighlighted =
     isHighlightFromTransformations || isHighlightFromAdditional || isHighlightedByInput || isHighlightedByOutput;
 
@@ -102,20 +159,21 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
     m.type === 'rename-key'
   );
 
-  const getBackgroundClass = () => {
+  const baseBackgroundClass = (() => {
     if (isAdded) return 'bg-green-200/30';
     if (isModified) return 'bg-blue-200/30';
     return '';
-  };
+  })();
 
-  const highlightBackgroundClass = isHighlighted ? 'bg-gray-300/60' : '';
+  const appliedBackgroundClass = isHighlighted ? 'bg-gray-300/60' : baseBackgroundClass;
 
   const handlePointerEnter = () => {
     setIsHovered(true);
     if (relatedTransformationIds.length > 0) {
       setHoveredTransformationIds(relatedTransformationIds);
     }
-    setHoveredOutputAttributeId(attribute.id);
+    setHoveredInputAttributeId(primaryInputHighlightTarget);
+    setHoveredOutputAttributeId(primaryOutputHighlightToken);
   };
 
   const handlePointerLeave = () => {
@@ -131,7 +189,10 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
     } else if (highlightedTransformationIds.length === 0) {
       clearHoveredTransformationIds();
     }
-    if (hoveredOutputAttributeId === attribute.id) {
+    if (hoveredInputAttributeId != null && highlightTokens.has(hoveredInputAttributeId)) {
+      clearHoveredInputAttributeId();
+    }
+    if (hoveredOutputAttributeId === primaryOutputHighlightToken) {
       clearHoveredOutputAttributeId();
     }
   };
@@ -148,7 +209,19 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
       if (shouldClear) {
         clearHoveredTransformationIds();
       }
-      if (hoveredOutputAttributeId === attribute.id) {
+      const cleanupTokens = buildAttributeHighlightTokens(
+        {
+          id: attribute.id,
+          path: attribute.path,
+          sectionId: attribute.sectionId,
+          key: attribute.key,
+        },
+        renameParams ? [renameParams.oldKey] : []
+      );
+      if (hoveredInputAttributeId != null && cleanupTokens.has(hoveredInputAttributeId)) {
+        clearHoveredInputAttributeId();
+      }
+      if (hoveredOutputAttributeId === primaryOutputHighlightToken) {
         clearHoveredOutputAttributeId();
       }
     };
@@ -156,13 +229,21 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
     clearHoveredTransformationIds,
     highlightedTransformationIds,
     relatedTransformationIds,
+    hoveredInputAttributeId,
     hoveredOutputAttributeId,
+    primaryOutputHighlightToken,
     clearHoveredOutputAttributeId,
+    clearHoveredInputAttributeId,
+    attribute.id,
+    attribute.path,
+    attribute.sectionId,
+    attribute.key,
+    renameParams?.oldKey,
   ]);
 
   return (
     <div
-      className={`flex items-center py-1.5 mb-0.5 transition-colors leading-none select-none hover:bg-gray-200 ${getBackgroundClass()} ${highlightBackgroundClass}`}
+      className={`flex items-center py-1.5 mb-0.5 transition-colors leading-none select-none hover:bg-gray-200 ${appliedBackgroundClass}`}
       onMouseEnter={handlePointerEnter}
       onMouseLeave={handlePointerLeave}
     >
