@@ -207,6 +207,7 @@ mkdir -p tests/{unit/{transformations,telemetry,utils},component,e2e}
 **Goal**: Display telemetry and handle panel layout
 
 1. **Create split panel layout**:
+   {% raw %}
    ```typescript
    // src/components/panels/split-panel.tsx
    export function SplitPanel({ children }: { children: React.ReactNode[] }) {
@@ -221,6 +222,7 @@ mkdir -p tests/{unit/{transformations,telemetry,utils},component,e2e}
      );
    }
    ```
+   {% endraw %}
 
 2. **Build telemetry tree component**:
    ```typescript
