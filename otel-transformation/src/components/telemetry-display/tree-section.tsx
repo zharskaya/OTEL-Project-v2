@@ -7,6 +7,13 @@ import {
 } from '@dnd-kit/sortable';
 import { TelemetrySection, ValueType, ModificationColor, DisplayAttribute } from '@/types/telemetry-types';
 import { AttributeRow } from './attribute-row';
+import {
+  buildGroupedAttributeTree,
+  flattenGroupedAttributeTree,
+  type FlattenedGroupedNode,
+  type GroupedGroupNode,
+  type GroupedNode,
+} from './attribute-grouping';
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
@@ -37,6 +44,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   
   // Track visual order of attributes (separate from transformation execution order)
   const [visualOrder, setVisualOrder] = useState<string[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const transformations = useTransformations();
   const { setAttributeOrder } = useTransformationActions();
@@ -263,6 +271,16 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       .filter((a): a is DisplayAttribute => a !== undefined);
   }, [baseAttributes, visualOrder]);
 
+  const groupedAttributeNodes = React.useMemo(
+    () => buildGroupedAttributeTree(section.id, allAttributes),
+    [section.id, allAttributes]
+  );
+
+  const flattenedItems = React.useMemo(
+    () => flattenGroupedAttributeTree(groupedAttributeNodes, collapsedGroups),
+    [groupedAttributeNodes, collapsedGroups]
+  );
+
   // Create sortable items list - all attributes except deleted ones get composite IDs
   const sortableItems = allAttributes.map(attr => `${section.id}:${attr.id}`);
 
@@ -333,32 +351,56 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                 strategy={verticalListSortingStrategy}
               >
                 <div>
-                  {allAttributes.map((attribute, index) => {
+                  {flattenedItems.map((item, index) => {
+                    if (item.type === 'group') {
+                      const groupId = item.node.id;
+                      const isCollapsed = Boolean(collapsedGroups[groupId]);
+                      return (
+                        <AttributeGroupRow
+                          key={`group-${groupId}`}
+                          node={item.node}
+                          isCollapsed={isCollapsed}
+                          onToggle={() =>
+                            setCollapsedGroups((previous) => ({
+                              ...previous,
+                              [groupId]: !previous[groupId],
+                            }))
+                          }
+                        />
+                      );
+                    }
+
+                    const attribute = item.node.attribute;
+                    const desiredDepth = item.node.depth;
+                    const attributeForRender =
+                      attribute.depth === desiredDepth ? attribute : { ...attribute, depth: desiredDepth };
                     const compositeId = `${section.id}:${attribute.id}`;
                     const isPendingDeletion = pendingDeletionId === compositeId;
-                    
+
                     return (
                       <React.Fragment key={`${attribute.id}-${attribute.path}-${index}`}>
-                        {/* Show substring form right above the source attribute */}
-                        {showSubstringForm && substringParams && substringParams.sourceAttributePath === attribute.path && (
-                          <SubstringAttributeForm
-                            sourceKey={substringParams.sourceKey}
-                            sourcePath={substringParams.sourcePath}
-                            sectionId={substringParams.sectionId}
-                            substringStart={substringParams.substringStart}
-                            substringEnd={substringParams.substringEnd}
-                            onCancel={handleFormClose}
-                            onSave={handleFormClose}
-                          />
-                        )}
+                        {showSubstringForm &&
+                          substringParams &&
+                          substringParams.sourceAttributePath === attribute.path && (
+                            <SubstringAttributeForm
+                              sourceKey={substringParams.sourceKey}
+                              sourcePath={substringParams.sourcePath}
+                              sectionId={substringParams.sectionId}
+                              substringStart={substringParams.substringStart}
+                              substringEnd={substringParams.substringEnd}
+                              onCancel={handleFormClose}
+                              onSave={handleFormClose}
+                            />
+                          )}
                         <AttributeRow
-                          attribute={attribute}
+                          attribute={attributeForRender}
                           sortableId={compositeId}
                           onRequestSubstring={handleRequestSubstring}
-                          isDraggable={true} // All attributes are draggable
+                          isDraggable={true}
                           showDropIndicator={dropIndicatorId === compositeId}
                           forceDeleted={isPendingDeletion}
                           movedKeys={movedKeys}
+                          displayKey={item.node.displayKey}
                         />
                       </React.Fragment>
                     );
@@ -373,4 +415,32 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   );
 }
 
+interface AttributeGroupRowProps {
+  node: GroupedGroupNode;
+  isCollapsed: boolean;
+  onToggle: () => void;
+}
+
+function AttributeGroupRow({ node, isCollapsed, onToggle }: AttributeGroupRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center py-1.5 mb-0.5 text-left focus:outline-none transition-colors hover:bg-gray-100"
+    >
+      <div className="w-[260px] flex-shrink-0 flex items-start pr-4 leading-none">
+        <div
+          style={{ paddingLeft: `${40 + node.depth * 16}px` }}
+          className="flex items-center gap-2 leading-none"
+        >
+          <span className="text-xs text-gray-600">{isCollapsed ? '▸' : '▾'}</span>
+          <span className="font-semibold text-xs text-gray-900 leading-none">{node.label}</span>
+        </div>
+      </div>
+      <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">
+        {node.attributeCount} {node.attributeCount === 1 ? 'key' : 'keys'}
+      </div>
+    </button>
+  );
+}
 

@@ -94,9 +94,19 @@ interface AttributeRowProps {
     substringStart: number;
     substringEnd: number | 'end';
   }) => void;
+  displayKey?: string;
 }
 
-export function AttributeRow({ attribute, isDraggable = false, showDropIndicator = false, sortableId, forceDeleted = false, movedKeys = new Set<string>(), onRequestSubstring }: AttributeRowProps) {
+export function AttributeRow({
+  attribute,
+  isDraggable = false,
+  showDropIndicator = false,
+  sortableId,
+  forceDeleted = false,
+  movedKeys = new Set<string>(),
+  onRequestSubstring,
+  displayKey,
+}: AttributeRowProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isValueHovered, setIsValueHovered] = useState(false);
   const [hoverSelection, setHoverSelection] = useState<TextSelection | null>(null);
@@ -1268,7 +1278,7 @@ export function AttributeRow({ attribute, isDraggable = false, showDropIndicator
                       handleStartRenaming();
                     }}
                   >
-                    {attribute.key}
+                    {displayKey ?? attribute.key}
                   </span>
                 </TooltipTrigger>
                 {isHovered && !isDeleted && (

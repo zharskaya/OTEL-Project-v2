@@ -32,9 +32,10 @@ function getTransformationAttributePath(transformation: Transformation): string 
 
 interface ReadOnlyAttributeRowProps {
   attribute: DisplayAttribute;
+  displayKey?: string;
 }
 
-export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
+export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttributeRowProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const highlightedTransformationIds = useHighlightedTransformationIds();
   const {
@@ -252,7 +253,7 @@ export function ReadOnlyAttributeRow({ attribute }: ReadOnlyAttributeRowProps) {
         <div style={{ paddingLeft: `${40 + attribute.depth * 16}px` }} className="flex items-start gap-3 leading-none">
           <div className="flex-1 leading-none break-all">
             <span className="font-mono text-xs text-gray-900 leading-none select-none">
-              {attribute.key}
+              {displayKey ?? attribute.key}
             </span>
           </div>
         </div>
