@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
-import { useAttributeOrder, useTransformationActions, useTransformations } from '@/lib/state/hooks';
+import { useTransformationActions, useTransformations } from '@/lib/state/hooks';
 import {
   TransformationType,
   TransformationStatus,
@@ -39,14 +39,8 @@ export function RenameKeyForm({
 }: RenameKeyFormProps) {
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
-  const {
-    addTransformation,
-    updateTransformation,
-    removeTransformation,
-    setAttributeOrder,
-  } = useTransformationActions();
+  const { addTransformation, updateTransformation, removeTransformation } = useTransformationActions();
   const transformations = useTransformations();
-  const attributeOrder = useAttributeOrder();
   const hasSavedRef = useRef(false);
 
   // Focus on mount and select all text
@@ -98,12 +92,6 @@ export function RenameKeyForm({
         removeTransformation(existingRename.id);
       }
 
-      const currentOrder = attributeOrder.get(sectionId);
-      if (currentOrder && currentOrder.length > 0) {
-        const updatedOrder = currentOrder.map((key) => (key === oldKey ? trimmed : key));
-        setAttributeOrder(sectionId, updatedOrder);
-      }
-
       onSave();
       return;
     }
@@ -126,12 +114,6 @@ export function RenameKeyForm({
 
       if (existingRename) {
         removeTransformation(existingRename.id);
-      }
-
-      const currentOrder = attributeOrder.get(sectionId);
-      if (currentOrder && currentOrder.length > 0) {
-        const updatedOrder = currentOrder.map((key) => (key === oldKey ? trimmed : key));
-        setAttributeOrder(sectionId, updatedOrder);
       }
 
       onSave();

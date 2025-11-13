@@ -146,6 +146,8 @@ export interface DisplayAttribute {
   movedFromSectionLabel?: string;
   insertBeforeKey?: string | null;
   insertAfterKey?: string | null;
+  insertBeforeId?: string | null;
+  insertAfterId?: string | null;
   insertIndex?: number;
 }
 

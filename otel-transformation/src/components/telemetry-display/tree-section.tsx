@@ -104,7 +104,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         // Create unique ID using stable transformation ID
         // The transformation ID already contains timestamp, so it's unique
         const key = params.newKey || params.key || 'OTTL';
-        const uniqueId = `added-${section.id}-${key}-${t.id}-idx${idx}`;
+        const uniqueId = params.preservedAttributeId ?? `added-${section.id}-${key}-${t.id}-idx${idx}`;
         
         // For substring attributes, compute the extracted value
         let displayValue = params.value || '';
@@ -131,6 +131,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         let insertBeforeKey: string | null | undefined;
         let insertAfterKey: string | null | undefined;
         let insertIndex: number | undefined;
+        let insertBeforeId: string | null | undefined;
+        let insertAfterId: string | null | undefined;
         let isMovedIn = false;
 
         if (t.type === TransformationType.ADD_STATIC) {
@@ -139,7 +141,21 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           insertBeforeKey = 'insertBeforeKey' in params ? (params.insertBeforeKey as string | null | undefined) : undefined;
           insertAfterKey = 'insertAfterKey' in params ? (params.insertAfterKey as string | null | undefined) : undefined;
           insertIndex = typeof params.insertionIndex === 'number' ? params.insertionIndex : undefined;
-          isMovedIn = Boolean(movedFromSectionId);
+          insertBeforeId = 'insertBeforeId' in params ? (params.insertBeforeId as string | null | undefined) : undefined;
+          insertAfterId = 'insertAfterId' in params ? (params.insertAfterId as string | null | undefined) : undefined;
+          const pairedDelete =
+            t.pairedTransformationId != null
+              ? transformations.find(
+                  (candidate) =>
+                    candidate.id !== t.id &&
+                    candidate.pairedTransformationId === t.pairedTransformationId &&
+                    candidate.type === TransformationType.DELETE
+                )
+              : null;
+          const pairedDeleteParams = pairedDelete ? (pairedDelete.params as DeleteParams) : null;
+          const isPairedMove =
+            Boolean(pairedDeleteParams?.movedToSectionId) && pairedDeleteParams?.movedToSectionId === section.id;
+          isMovedIn = Boolean(movedFromSectionId || isPairedMove);
         }
         
         return {
@@ -156,6 +172,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           movedFromSectionLabel,
           insertBeforeKey: insertBeforeKey ?? null,
           insertAfterKey: insertAfterKey ?? null,
+          insertBeforeId: insertBeforeId ?? null,
+          insertAfterId: insertAfterId ?? null,
           insertIndex,
           modifications: [{
             transformationId: t.id,
@@ -165,7 +183,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           }],
         };
       });
-  }, [sectionTransformations, section.id, section.attributes]);
+  }, [sectionTransformations, section.id, section.attributes, transformations]);
 
   const movedGroupAttributes = React.useMemo(() => {
     const syntheticAttributes: DisplayAttribute[] = [];
@@ -180,7 +198,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       }
 
       params.attributes.forEach((attribute, index) => {
-        const uniqueId = `move-group-${transformation.id}-${index}`;
+        const uniqueId = attribute.id ?? `move-group-${transformation.id}-${index}`;
         const syntheticPathBase = attribute.path || `${params.groupId}.${attribute.key}`;
         const syntheticPath = `${params.toGroupId ?? params.toSectionId}::${transformation.id}::${syntheticPathBase}`;
 
@@ -231,6 +249,25 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
     const finalOrdered = [...orderedAttributes];
     const insertMovedAttribute = (collection: DisplayAttribute[], item: DisplayAttribute) => {
+      const beforeId = item.insertBeforeId ?? null;
+      if (beforeId) {
+        const targetIndex = collection.findIndex((candidate) => candidate.id === beforeId);
+        if (targetIndex !== -1) {
+          collection.splice(targetIndex, 0, item);
+          return true;
+        }
+      }
+
+      const afterId = item.insertAfterId ?? null;
+      if (afterId) {
+        for (let index = collection.length - 1; index >= 0; index -= 1) {
+          if (collection[index].id === afterId) {
+            collection.splice(index + 1, 0, item);
+            return true;
+          }
+        }
+      }
+
       const beforeKey = item.insertBeforeKey ?? null;
       if (beforeKey) {
         const targetIndex = collection.findIndex((candidate) => candidate.key === beforeKey);
@@ -268,7 +305,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
     // Raw OTTL entries are not shown in the Input section.
     return [...staticAtTop, ...finalOrdered];
-  }, [addedStaticOrSubstring, movedGroupAttributes, rawOTTLAttributes, section.attributes]);
+  }, [addedStaticOrSubstring, movedGroupAttributes, rawOTTLAttributes, section.attributes, storedAttributeOrder]);
   
   // Initialize stored order if it doesn't exist (only runs once per section, ever)
   const hasInitialized = React.useRef(false);
@@ -283,8 +320,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     const currentStoredOrder = useTransformationStore.getState().attributeOrder.get(section.id);
 
     if (!currentStoredOrder || currentStoredOrder.length === 0) {
-      const keyOrder = baseAttributes.map(a => a.key);
-      setAttributeOrder(section.id, keyOrder);
+      const idOrder = baseAttributes.map((a) => a.id);
+      setAttributeOrder(section.id, idOrder);
     }
 
     hasInitialized.current = true;
@@ -293,171 +330,69 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   
   // Update visual order when base attributes change OR stored order changes
   React.useEffect(() => {
-    const keyToAttributes = new Map<string, DisplayAttribute[]>();
-    const keyToIdQueue = new Map<string, string[]>();
+    const idToAttribute = new Map<string, DisplayAttribute>();
     baseAttributes.forEach((attr) => {
-      const attrList = keyToAttributes.get(attr.key);
-      if (attrList) {
-        attrList.push(attr);
-      } else {
-        keyToAttributes.set(attr.key, [attr]);
-      }
-
-      const idList = keyToIdQueue.get(attr.key);
-      if (idList) {
-        idList.push(attr.id);
-      } else {
-        keyToIdQueue.set(attr.key, [attr.id]);
-      }
+      idToAttribute.set(attr.id, attr);
     });
 
-    const allKeys = baseAttributes.map((attr) => attr.key);
+    const allIds = baseAttributes.map((attr) => attr.id);
 
-    let nextKeyOrder: string[];
+    let nextIdOrder: string[];
 
     if (storedAttributeOrder && storedAttributeOrder.length > 0) {
-      const filtered = storedAttributeOrder.filter((key) => keyToAttributes.has(key));
-      let updated = [...filtered];
-
-      const missingKeys = allKeys.filter((key) => !updated.includes(key));
-
-      const insertUsingNaturalOrder = (targetKey: string) => {
-        const baseIndex = allKeys.indexOf(targetKey);
-        if (baseIndex === -1) {
-          updated.push(targetKey);
-          return;
-        }
-
-        let inserted = false;
-
-        for (let index = baseIndex - 1; index >= 0; index -= 1) {
-          const previousKey = allKeys[index];
-          const existingIndex = updated.indexOf(previousKey);
-          if (existingIndex !== -1) {
-            updated.splice(existingIndex + 1, 0, targetKey);
-            inserted = true;
+      const filtered = storedAttributeOrder.filter((id) => idToAttribute.has(id));
+      const missing = allIds.filter((id) => !filtered.includes(id));
+      missing.forEach((id) => {
+        const targetIndex = allIds.indexOf(id);
+        let insertIndex = filtered.length;
+        for (let index = 0; index < filtered.length; index += 1) {
+          const existingId = filtered[index];
+          const existingIndex = allIds.indexOf(existingId);
+          if (existingIndex === -1 || existingIndex > targetIndex) {
+            insertIndex = index;
             break;
           }
         }
-
-        if (!inserted) {
-          for (let index = baseIndex + 1; index < allKeys.length; index += 1) {
-            const nextKey = allKeys[index];
-            const existingIndex = updated.indexOf(nextKey);
-            if (existingIndex !== -1) {
-              updated.splice(existingIndex, 0, targetKey);
-              inserted = true;
-              break;
-            }
-          }
-        }
-
-        if (!inserted) {
-          updated.push(targetKey);
-        }
-      };
-
-      for (const key of missingKeys) {
-        const attribute = keyToAttributes.get(key)?.[0];
-        if (!attribute) continue;
-
-        const displayAttribute = attribute as DisplayAttribute;
-        const firstModification = attribute.modifications[0]?.type;
-        const sourcePath = (displayAttribute as any).sourceAttributePath as string | undefined;
-        const hasAddModification = attribute.modifications.some((modification) =>
-          modification.type === 'add' ||
-          modification.type === 'add-static' ||
-          modification.type === 'raw-ottl'
-        );
-        const isMovedInAttribute = Boolean(displayAttribute.isMovedIn);
-
-        if (isMovedInAttribute) {
-          const beforeKey = displayAttribute.insertBeforeKey ?? null;
-          const afterKey = displayAttribute.insertAfterKey ?? null;
-          let placed = false;
-          if (beforeKey && updated.includes(beforeKey)) {
-            const idx = updated.indexOf(beforeKey);
-            updated.splice(idx, 0, key);
-            placed = true;
-          } else if (afterKey && updated.includes(afterKey)) {
-            const idx = updated.indexOf(afterKey);
-            updated.splice(idx + 1, 0, key);
-            placed = true;
-          }
-          if (!placed) {
-            insertUsingNaturalOrder(key);
-          }
-          continue;
-        }
-
-        if (firstModification === 'add-substring' && sourcePath) {
-          const sourceAttribute = baseAttributes.find((attr) => attr.path === sourcePath);
-          const sourceKey = sourceAttribute?.key;
-          const insertIndex = sourceKey ? updated.indexOf(sourceKey) : -1;
-          if (insertIndex !== -1) {
-            updated.splice(insertIndex, 0, key);
-          } else {
-            updated.unshift(key);
-          }
-          continue;
-        }
-
-        if (hasAddModification) {
-          updated.unshift(key);
-          continue;
-        }
-
-        insertUsingNaturalOrder(key);
-      }
-
-      for (const key of allKeys) {
-        if (!updated.includes(key)) {
-          updated.push(key);
-        }
-      }
-
-      nextKeyOrder = updated;
+        filtered.splice(insertIndex, 0, id);
+      });
+      nextIdOrder = filtered;
     } else {
-      // No stored order yet – use natural baseAttributes order
-      nextKeyOrder = allKeys;
+      nextIdOrder = allIds;
     }
 
-    const nextIdOrder: string[] = [];
-    nextKeyOrder.forEach((key) => {
-      const queue = keyToIdQueue.get(key);
-      if (!queue || queue.length === 0) {
-        return;
-      }
-      const nextId = queue.shift();
-      if (nextId) {
-        nextIdOrder.push(nextId);
+    const dedupedOrder: string[] = [];
+    const seen = new Set<string>();
+    nextIdOrder.forEach((id) => {
+      if (!seen.has(id) && idToAttribute.has(id)) {
+        dedupedOrder.push(id);
+        seen.add(id);
       }
     });
-
-    // Append any remaining IDs (handles duplicate keys)
-    keyToIdQueue.forEach((queue) => {
-      queue.forEach((id) => {
-        if (!nextIdOrder.includes(id)) {
-          nextIdOrder.push(id);
-        }
-      });
+    allIds.forEach((id) => {
+      if (!seen.has(id)) {
+        dedupedOrder.push(id);
+        seen.add(id);
+      }
     });
 
     setVisualOrder((prev) => {
       const prevStr = prev.join(',');
-      const nextStr = nextIdOrder.join(',');
+      const nextStr = dedupedOrder.join(',');
       if (prevStr === nextStr) {
         return prev;
       }
-      return nextIdOrder;
+      return dedupedOrder;
     });
 
     const normalizedStored = storedAttributeOrder
-      ? storedAttributeOrder.filter((key) => keyToAttributes.has(key))
+      ? storedAttributeOrder.filter((id) => idToAttribute.has(id))
       : [];
 
-    if (normalizedStored.join(',') !== nextKeyOrder.join(',')) {
-      setAttributeOrder(section.id, nextKeyOrder);
+    if (
+      normalizedStored.length !== dedupedOrder.length ||
+      normalizedStored.some((id, index) => id !== dedupedOrder[index])
+    ) {
+      setAttributeOrder(section.id, dedupedOrder);
     }
   }, [baseAttributes, storedAttributeOrder, section.id, setAttributeOrder]);
   
@@ -682,22 +617,10 @@ function AttributeGroupRow({
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const applyAttributeOrderUpdates = React.useCallback(
-    (updatedKeys: Array<{ currentKey: string; newKey: string }>) => {
-      const currentOrder = attributeOrder.get(sectionId);
-      if (!currentOrder || currentOrder.length === 0) {
-        return;
-      }
-
-      let nextOrder = [...currentOrder];
-      updatedKeys.forEach(({ currentKey, newKey }) => {
-        nextOrder = nextOrder.map((key) => (key === currentKey ? newKey : key));
-      });
-
-      if (nextOrder.join(',') !== currentOrder.join(',')) {
-        setAttributeOrder(sectionId, nextOrder);
-      }
+    (_updatedKeys: Array<{ currentKey: string; newKey: string }>) => {
+      // No-op: attribute order is tracked by attribute IDs and unaffected by key changes.
     },
-    [attributeOrder, sectionId, setAttributeOrder]
+    []
   );
 
   const transformationByAttributePath = React.useMemo(() => {
@@ -1064,15 +987,15 @@ function AttributeGroupRow({
 
     removeTransformation(moveGroupTransformation.id);
 
-    const groupKeys = moveGroupParams.attributes.map(({ key }) => key);
+    const groupIds = groupedAttributes.map(({ id }) => id);
     const storeState = useTransformationStore.getState();
     const attributeOrderMap = storeState.attributeOrder;
 
     const sourceOrder = attributeOrderMap.get(moveGroupParams.fromSectionId) ?? [];
     const destinationOrder = attributeOrderMap.get(moveGroupParams.toSectionId) ?? [];
 
-    const restoredSourceOrder = [...sourceOrder.filter((key) => !groupKeys.includes(key)), ...groupKeys];
-    const updatedDestinationOrder = destinationOrder.filter((key) => !groupKeys.includes(key));
+    const restoredSourceOrder = [...sourceOrder.filter((id) => !groupIds.includes(id)), ...groupIds];
+    const updatedDestinationOrder = destinationOrder.filter((id) => !groupIds.includes(id));
 
     setAttributeOrder(moveGroupParams.fromSectionId, restoredSourceOrder);
     setAttributeOrder(moveGroupParams.toSectionId, updatedDestinationOrder);
@@ -1261,7 +1184,7 @@ function AttributeGroupRow({
       groupLabel: displayLabel,
       groupAttributes: groupedAttributes,
     },
-    disabled: !allowGroupActions,
+    disabled: !allowGroupActions || isGroupMoveSource,
   });
   const rowStyle = React.useMemo<React.CSSProperties>(
     () => ({
@@ -1270,7 +1193,7 @@ function AttributeGroupRow({
     }),
     [transform, transition]
   );
-  const showDragHandle = allowGroupActions && isHovered && !isRenaming;
+  const showDragHandle = allowGroupActions && !isGroupMoveSource && isHovered && !isRenaming;
 
   return (
     <div

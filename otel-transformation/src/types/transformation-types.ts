@@ -55,7 +55,10 @@ export interface AddStaticParams {
   movedFromPath?: string;
   insertBeforeKey?: string | null;
   insertAfterKey?: string | null;
+  insertBeforeId?: string | null;
+  insertAfterId?: string | null;
   insertionIndex?: number;
+  preservedAttributeId?: string;
   pairedTransformationId?: string;
 }
 
@@ -101,6 +104,7 @@ export interface MoveGroupParams {
   toSectionLabel?: string;
   toGroupId?: string;
   attributes: Array<{
+    id?: string;
     path: string;
     key: string;
     value: string;

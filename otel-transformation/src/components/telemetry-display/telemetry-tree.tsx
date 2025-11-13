@@ -11,12 +11,10 @@ import {
   DragEndEvent,
   DragOverEvent,
   DragStartEvent,
-  DragOverlay,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { TelemetryTree as TelemetryTreeType, DisplayAttribute } from '@/types/telemetry-types';
 import { TreeSection } from './tree-section';
-import { AttributeRow } from './attribute-row';
 import { useTransformations, useTransformationActions } from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
 import {
@@ -97,23 +95,6 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
   };
 
   // Get the dragged attribute for the overlay
-  const getDraggedAttribute = () => {
-    if (!activeId) return null;
-    
-    const parsed = parseId(activeId);
-    if (!parsed) return null;
-    if (parsed.entityType === 'group') {
-      return null;
-    }
-    
-    const section = tree.sections.find((s) => s.id === parsed.sectionId);
-    if (!section) return null;
-    
-    // Check both original attributes and added attributes (transformations)
-    const attr = section.attributes.find((a) => a.id === parsed.entityId);
-    return attr || null;
-  };
-
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
     setPendingCrossSectionId(null);
@@ -182,6 +163,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       }
 
       const draggedKey = draggedAttr.key;
+      const draggedId = draggedAttr.id;
       const modificationTypes = new Set((activeAttrData?.modifications || []).map((m) => m.type));
 
       if (modificationTypes.has(TransformationType.DELETE)) {
@@ -192,14 +174,15 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const destSectionOrder = attributeOrderMap.get(overInfo.sectionId)
         ? [...(attributeOrderMap.get(overInfo.sectionId) as string[])]
         : destSection
-        ? destSection.attributes.map((a) => a.key)
+        ? destSection.attributes.map((a) => a.id)
         : [];
 
-      const dropTargetKey =
-        overAttrData?.key ||
-        destSection?.attributes.find((a) => a.id === overInfo.entityId)?.key;
+      const dropTargetId =
+        overAttrData?.id ||
+        destSection?.attributes.find((a) => a.id === overInfo.entityId)?.id ||
+        null;
 
-      const existingIndex = destSectionOrder.indexOf(draggedKey);
+      const existingIndex = destSectionOrder.indexOf(draggedId);
       if (existingIndex !== -1) {
         destSectionOrder.splice(existingIndex, 1);
       }
@@ -207,8 +190,8 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const overSortable = (over.data.current as any)?.sortable;
 
       let insertIndex = destSectionOrder.length;
-      if (dropTargetKey) {
-        const idx = destSectionOrder.indexOf(dropTargetKey);
+      if (dropTargetId) {
+        const idx = destSectionOrder.indexOf(dropTargetId);
         if (idx !== -1) {
           insertIndex = idx;
         }
@@ -217,10 +200,18 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       }
 
       const newOrder = [...destSectionOrder];
-      newOrder.splice(insertIndex, 0, draggedKey);
+      newOrder.splice(insertIndex, 0, draggedId);
       setAttributeOrder(overInfo.sectionId, newOrder);
-      const insertBeforeKey = newOrder[insertIndex + 1] ?? null;
-      const insertAfterKey = insertIndex > 0 ? newOrder[insertIndex - 1] ?? null : null;
+      const insertBeforeId = newOrder[insertIndex + 1] ?? null;
+      const insertAfterId = insertIndex > 0 ? newOrder[insertIndex - 1] ?? null : null;
+      const destinationAttributeMap = new Map<string, DisplayAttribute>();
+      destSection?.attributes.forEach((attribute) => {
+        destinationAttributeMap.set(attribute.id, attribute);
+      });
+      const insertBeforeAttribute = insertBeforeId ? destinationAttributeMap.get(insertBeforeId) : null;
+      const insertAfterAttribute = insertAfterId ? destinationAttributeMap.get(insertAfterId) : null;
+      const insertBeforeKey = insertBeforeAttribute?.key ?? null;
+      const insertAfterKey = insertAfterAttribute?.key ?? null;
 
       const allowTransformMoveTypes = new Set<TransformationType | string>([
         TransformationType.ADD_STATIC,
@@ -261,6 +252,14 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
               updatedParams.movedToPath = draggedAttr.path;
             }
 
+            if ('insertBeforeId' in updatedParams || 'insertBeforeKey' in updatedParams) {
+              updatedParams.insertBeforeId = insertBeforeId ?? null;
+              updatedParams.insertAfterId = insertAfterId ?? null;
+              updatedParams.insertBeforeKey = insertBeforeKey;
+              updatedParams.insertAfterKey = insertAfterKey;
+              updatedParams.insertionIndex = insertIndex;
+            }
+
             updateTransformation(transformation.id, {
               sectionId: overInfo.sectionId,
               params: updatedParams,
@@ -270,7 +269,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
         const sourceOrder = attributeOrderMap.get(activeInfo.sectionId);
         if (sourceOrder) {
-          const filtered = sourceOrder.filter((key) => key !== draggedKey);
+          const filtered = sourceOrder.filter((id) => id !== draggedId);
           if (filtered.length !== sourceOrder.length) {
             setAttributeOrder(activeInfo.sectionId, filtered);
           }
@@ -343,7 +342,10 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           movedFromPath: draggedAttr.path,
           insertBeforeKey,
           insertAfterKey,
+          insertBeforeId,
+          insertAfterId,
           insertionIndex: insertIndex,
+          preservedAttributeId: draggedAttr.id,
           pairedTransformationId: pairId,
         },
       });
@@ -391,19 +393,77 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       return;
     }
 
+    const groupAttributes = (activeData?.groupAttributes as DisplayAttribute[]) ?? [];
+    const fullGroupAttributes = groupAttributes;
+    if (fullGroupAttributes.length === 0) {
+      return;
+    }
+
     if (activeInfo.sectionId === overInfo.sectionId) {
+      const sectionId = activeInfo.sectionId;
+      const section = tree.sections.find((candidate) => candidate.id === sectionId);
+      if (!section) {
+        return;
+      }
+
+      const attributeOrder = useTransformationStore.getState().attributeOrder;
+      const currentOrder = attributeOrder.get(sectionId)
+        ? [...(attributeOrder.get(sectionId) as string[])]
+        : section.attributes.map((attribute) => attribute.id);
+
+      if (currentOrder.length === 0) {
+        return;
+      }
+
+      const groupIds = fullGroupAttributes.map((attribute) => attribute.id);
+      const groupIdSet = new Set(groupIds);
+      if (groupIds.length === 0) {
+        return;
+      }
+
+      const referenceId = (() => {
+        if (overInfo.entityType === 'group') {
+          const overGroupAttributes = (overData?.groupAttributes as DisplayAttribute[]) ?? [];
+          const candidate = overGroupAttributes.find((attribute) => !groupIdSet.has(attribute.id));
+          return candidate?.id ?? null;
+        }
+        const attribute = overData?.attribute as DisplayAttribute | undefined;
+        if (attribute && !groupIdSet.has(attribute.id)) {
+          return attribute.id;
+        }
+        return null;
+      })();
+
+      if (referenceId && groupIdSet.has(referenceId)) {
+        return;
+      }
+
+      const filteredOrder = currentOrder.filter((id) => !groupIdSet.has(id));
+      let insertIndex = filteredOrder.length;
+      if (referenceId) {
+        const idx = filteredOrder.indexOf(referenceId);
+        if (idx !== -1) {
+          insertIndex = idx;
+        }
+      }
+
+      const nextOrder = [...filteredOrder];
+      nextOrder.splice(insertIndex, 0, ...groupIds);
+
+      if (
+        nextOrder.length === currentOrder.length &&
+        nextOrder.every((id, index) => currentOrder[index] === id)
+      ) {
+        return;
+      }
+
+      setAttributeOrder(sectionId, nextOrder);
       return;
     }
 
     const sourceSection = tree.sections.find((section) => section.id === activeInfo.sectionId);
     const destinationSection = tree.sections.find((section) => section.id === overInfo.sectionId);
     if (!sourceSection || !destinationSection) {
-      return;
-    }
-
-    const groupAttributes = (activeData?.groupAttributes as DisplayAttribute[]) ?? [];
-    const fullGroupAttributes = groupAttributes;
-    if (fullGroupAttributes.length === 0) {
       return;
     }
 
@@ -432,6 +492,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         toSectionLabel: destinationSection.label,
         toGroupId: destinationGroupId,
         attributes: fullGroupAttributes.map((attribute) => ({
+          id: attribute.id,
           key: attribute.key,
           value: attribute.value,
           valueType: attribute.valueType,
@@ -445,7 +506,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     const sourceOrder = attributeOrder.get(activeInfo.sectionId);
     if (sourceOrder) {
       const filtered = sourceOrder.filter(
-        (key) => !fullGroupAttributes.some((attribute) => attribute.key === key)
+        (id) => !fullGroupAttributes.some((attribute) => attribute.id === id)
       );
       if (filtered.length !== sourceOrder.length) {
         setAttributeOrder(activeInfo.sectionId, filtered);
@@ -454,38 +515,38 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
     const destinationOrderRaw =
       attributeOrder.get(overInfo.sectionId) ??
-      destinationSection.attributes.map((attribute) => attribute.key);
+      destinationSection.attributes.map((attribute) => attribute.id);
 
-    const groupKeys = fullGroupAttributes.map((attribute) => attribute.key);
-    const destinationOrder = destinationOrderRaw.filter((key) => !groupKeys.includes(key));
+    const groupIds = fullGroupAttributes.map((attribute) => attribute.id);
+    const destinationOrder = destinationOrderRaw.filter((id) => !groupIds.includes(id));
 
-    const dropTargetKey = (() => {
+    const dropTargetId = (() => {
       if (!overData) {
         return null;
       }
       if (overData.type === 'group') {
-        const candidateKeys: string[] = Array.isArray(overData.groupAttributes)
-          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.key)
+        const candidateIds: string[] = Array.isArray(overData.groupAttributes)
+          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.id)
           : [];
-        return candidateKeys.find((candidateKey: string) => destinationOrder.includes(candidateKey)) ?? null;
+        return candidateIds.find((candidateId: string) => destinationOrder.includes(candidateId)) ?? null;
       }
       const attribute = overData.attribute as DisplayAttribute | undefined;
-      if (attribute && destinationOrder.includes(attribute.key)) {
-        return attribute.key;
+      if (attribute && destinationOrder.includes(attribute.id)) {
+        return attribute.id;
       }
       return null;
     })();
 
     let insertIndex = destinationOrder.length;
-    if (dropTargetKey) {
-      const idx = destinationOrder.indexOf(dropTargetKey);
+    if (dropTargetId) {
+      const idx = destinationOrder.indexOf(dropTargetId);
       if (idx !== -1) {
         insertIndex = idx;
       }
     }
 
     const nextOrder = [...destinationOrder];
-    nextOrder.splice(insertIndex, 0, ...groupKeys);
+    nextOrder.splice(insertIndex, 0, ...groupIds);
     setAttributeOrder(overInfo.sectionId, nextOrder);
 
     fullGroupAttributes.forEach((attribute) => movedKeysRef.current.add(attribute.key));
@@ -511,23 +572,6 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           />
         ))}
       </div>
-      
-      {/* Drag overlay for cross-section dragging */}
-      <DragOverlay>
-        {activeId ? (() => {
-          const draggedAttr = getDraggedAttribute();
-          if (!draggedAttr) return null;
-          
-          return (
-            <div className="cursor-grabbing bg-gray-200 shadow-lg rounded border border-gray-300">
-              <AttributeRow
-                attribute={draggedAttr}
-                isDraggable={false}
-              />
-            </div>
-          );
-        })() : null}
-      </DragOverlay>
     </DndContext>
   );
 }
