@@ -12,6 +12,7 @@ interface TransformationStore {
   transformations: Transformation[];
   lastExecutionResult: TransformationResult | null;
   attributeOrder: Map<string, string[]>; // sectionId -> ordered attribute KEYS (not IDs)
+  visualAttributeOrder: Map<string, string[]>; // sectionId -> visual order (IDs) as rendered
   hoveredTransformationIds: string[];
   hoveredInputAttributeId: string | null;
   hoveredOutputAttributeId: string | null;
@@ -31,6 +32,7 @@ interface TransformationStore {
   executeTransformations: (inputData: ResourceSpan) => TransformationResult;
   clearAll: () => void;
   setAttributeOrder: (sectionId: string, order: string[]) => void;
+  setVisualAttributeOrder: (sectionId: string, order: string[]) => void;
   setHoveredTransformationIds: (ids: string[]) => void;
   clearHoveredTransformationIds: () => void;
   setHoveredInputAttributeId: (id: string | null) => void;
@@ -48,6 +50,7 @@ export const useTransformationStore = create<TransformationStore>(
     transformations: [],
     lastExecutionResult: null,
     attributeOrder: new Map(),
+    visualAttributeOrder: new Map(),
     hoveredTransformationIds: [],
     hoveredInputAttributeId: null,
     hoveredOutputAttributeId: null,
@@ -72,14 +75,19 @@ export const useTransformationStore = create<TransformationStore>(
 
         const params = transformation.params as AddStaticParams;
         const key = params.key;
-        if (!key) {
+        const orderToken = params.preservedAttributeId ?? key;
+        if (!orderToken) {
           return { transformations: nextTransformations };
         }
 
         const nextAttributeOrder = new Map(state.attributeOrder);
         const currentOrder = nextAttributeOrder.get(transformation.sectionId) ?? [];
-        const filteredOrder = currentOrder.filter((existingKey) => existingKey !== key);
-        nextAttributeOrder.set(transformation.sectionId, [key, ...filteredOrder]);
+        const tokensToRemove = new Set<string>([orderToken]);
+        if (key && key !== orderToken) {
+          tokensToRemove.add(key);
+        }
+        const filteredOrder = currentOrder.filter((existingKey) => !tokensToRemove.has(existingKey));
+        nextAttributeOrder.set(transformation.sectionId, [orderToken, ...filteredOrder]);
 
         return {
           transformations: nextTransformations,
@@ -143,7 +151,8 @@ export const useTransformationStore = create<TransformationStore>(
       const result = TransformationEngine.execute(
         inputData,
         get().transformations,
-        get().attributeOrder
+        get().attributeOrder,
+        get().visualAttributeOrder
       );
       set({ lastExecutionResult: result });
       return result;
@@ -154,6 +163,7 @@ export const useTransformationStore = create<TransformationStore>(
         transformations: [],
         lastExecutionResult: null,
         attributeOrder: new Map(),
+        visualAttributeOrder: new Map(),
         activeRange: {
           start: 0,
           end: 0,
@@ -166,6 +176,13 @@ export const useTransformationStore = create<TransformationStore>(
         // Ensure we always store a new array reference to trigger subscriptions
         newOrder.set(sectionId, [...order]);
         return { attributeOrder: newOrder };
+      }),
+
+    setVisualAttributeOrder: (sectionId, order) =>
+      set((state) => {
+        const newOrder = new Map(state.visualAttributeOrder);
+        newOrder.set(sectionId, [...order]);
+        return { visualAttributeOrder: newOrder };
       }),
 
     setHoveredTransformationIds: (ids) =>

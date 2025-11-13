@@ -87,7 +87,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const transformations = useTransformations();
-  const { setAttributeOrder } = useTransformationActions();
+  const { setAttributeOrder, setVisualAttributeOrder } = useTransformationActions();
 
   // Subscribe to stored order changes for this section (for same-section reordering)
   const storedAttributeOrder = useTransformationStore((state) => state.attributeOrder.get(section.id));
@@ -192,6 +192,26 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       });
   }, [sectionTransformations, section.id, section.attributes, transformations]);
 
+  const substringAttributes = React.useMemo(
+    () => addedStaticOrSubstring.filter((attribute) => Boolean(attribute.sourceAttributePath)),
+    [addedStaticOrSubstring]
+  );
+
+  const staticAddedAttributes = React.useMemo(
+    () => addedStaticOrSubstring.filter((attribute) => !attribute.sourceAttributePath),
+    [addedStaticOrSubstring]
+  );
+
+  const movedStaticAttributes = React.useMemo(
+    () => staticAddedAttributes.filter((attribute) => attribute.isMovedIn),
+    [staticAddedAttributes]
+  );
+
+  const directStaticAttributes = React.useMemo(
+    () => staticAddedAttributes.filter((attribute) => !attribute.isMovedIn),
+    [staticAddedAttributes]
+  );
+
   const movedGroupAttributes = React.useMemo(() => {
     const syntheticAttributes: DisplayAttribute[] = [];
 
@@ -239,17 +259,25 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
   // Combine original attributes with added attributes based on creation logic
   const baseAttributes = React.useMemo(() => {
-    const substringAttrs = addedStaticOrSubstring.filter(a => a.sourceAttributePath);
-    const staticAddedAttrs = addedStaticOrSubstring.filter(a => !a.sourceAttributePath);
-    const movedStaticAttrs = staticAddedAttrs.filter((attribute) => attribute.isMovedIn);
-    const directStaticAttrs = staticAddedAttrs.filter((attribute) => !attribute.isMovedIn);
-    const movedAttributes = [...movedStaticAttrs, ...movedGroupAttributes];
-
-    const staticAtTop = [...directStaticAttrs].reverse();
+    const movedAttributes: DisplayAttribute[] = [...movedStaticAttributes, ...movedGroupAttributes];
+    const staticAtTop = [...directStaticAttributes].reverse();
     const orderedAttributes: DisplayAttribute[] = [];
 
+    const substringsBySource = new Map<string, DisplayAttribute[]>();
+    substringAttributes.forEach((attribute) => {
+      if (!attribute.sourceAttributePath) {
+        return;
+      }
+      const bucket = substringsBySource.get(attribute.sourceAttributePath);
+      if (bucket) {
+        bucket.push(attribute);
+      } else {
+        substringsBySource.set(attribute.sourceAttributePath, [attribute]);
+      }
+    });
+
     for (const attr of section.attributes) {
-      const substringsBefore = substringAttrs.filter(sa => sa.sourceAttributePath === attr.path);
+      const substringsBefore = substringsBySource.get(attr.path) ?? [];
       orderedAttributes.push(...substringsBefore);
       orderedAttributes.push(attr);
     }
@@ -312,7 +340,14 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
     // Raw OTTL entries are not shown in the Input section.
     return [...staticAtTop, ...finalOrdered];
-  }, [addedStaticOrSubstring, movedGroupAttributes, rawOTTLAttributes, section.attributes, storedAttributeOrder]);
+  }, [
+    directStaticAttributes,
+    movedGroupAttributes,
+    movedStaticAttributes,
+    rawOTTLAttributes,
+    section.attributes,
+    substringAttributes,
+  ]);
   
   // Initialize stored order if it doesn't exist (only runs once per section, ever)
   const hasInitialized = React.useRef(false);
@@ -373,32 +408,111 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
 
     const allIds = baseAttributes.map((attr) => attr.id);
 
-    let nextIdOrder: string[];
+    const resolvedStored = (storedAttributeOrder ?? [])
+      .map((token) => resolveTokenToId(token))
+      .filter((id): id is string => id != null);
 
-    if (storedAttributeOrder && storedAttributeOrder.length > 0) {
-      const resolvedStored = storedAttributeOrder
-        .map((token) => resolveTokenToId(token))
-        .filter((id): id is string => id != null);
+    const filtered = resolvedStored.filter((id) => idToAttribute.has(id));
+    const filteredSet = new Set(filtered);
+    const missingIds = allIds.filter((id) => !filteredSet.has(id));
 
-      const filtered = resolvedStored.filter((id) => idToAttribute.has(id));
-      const missing = allIds.filter((id) => !filtered.includes(id));
-      missing.forEach((id) => {
-        const targetIndex = allIds.indexOf(id);
-        let insertIndex = filtered.length;
-        for (let index = 0; index < filtered.length; index += 1) {
-          const existingId = filtered[index];
-          const existingIndex = allIds.indexOf(existingId);
-          if (existingIndex === -1 || existingIndex > targetIndex) {
-            insertIndex = index;
-            break;
+    const findIndexByKey = (key: string, searchFromEnd = false): number => {
+      if (searchFromEnd) {
+        for (let index = filtered.length - 1; index >= 0; index -= 1) {
+          const candidate = idToAttribute.get(filtered[index]);
+          if (candidate?.key === key) {
+            return index;
           }
         }
-        filtered.splice(insertIndex, 0, id);
-      });
-      nextIdOrder = filtered;
-    } else {
-      nextIdOrder = allIds;
-    }
+        return -1;
+      }
+      return filtered.findIndex((candidateId) => idToAttribute.get(candidateId)?.key === key);
+    };
+
+    const resolvePathToId = (path?: string | null): string | null => {
+      if (!path) {
+        return null;
+      }
+      return idByPath.get(path) ?? null;
+    };
+
+    const determineIndexFromBaseOrder = (attributeId: string): number => {
+      const targetIndex = allIds.indexOf(attributeId);
+      if (targetIndex === -1) {
+        return filtered.length;
+      }
+      for (let index = 0; index < filtered.length; index += 1) {
+        const existingId = filtered[index];
+        const existingIndex = allIds.indexOf(existingId);
+        if (existingIndex === -1 || existingIndex > targetIndex) {
+          return index;
+        }
+      }
+      return filtered.length;
+    };
+
+    const determineInsertIndex = (attribute: DisplayAttribute): number => {
+      if (attribute.sourceAttributePath) {
+        const sourceId = resolvePathToId(attribute.sourceAttributePath);
+        if (sourceId) {
+          const sourceIndex = filtered.indexOf(sourceId);
+          if (sourceIndex !== -1) {
+            return sourceIndex;
+          }
+        }
+      }
+
+      if (attribute.isMovedIn) {
+        const beforeId = attribute.insertBeforeId ?? null;
+        if (beforeId) {
+          const beforeIndex = filtered.indexOf(beforeId);
+          if (beforeIndex !== -1) {
+            return beforeIndex;
+          }
+        }
+
+        const afterId = attribute.insertAfterId ?? null;
+        if (afterId) {
+          const afterIndex = filtered.indexOf(afterId);
+          if (afterIndex !== -1) {
+            return afterIndex + 1;
+          }
+        }
+
+        const beforeKey = attribute.insertBeforeKey ?? null;
+        if (beforeKey) {
+          const beforeIndex = findIndexByKey(beforeKey);
+          if (beforeIndex !== -1) {
+            return beforeIndex;
+          }
+        }
+
+        const afterKey = attribute.insertAfterKey ?? null;
+        if (afterKey) {
+          const afterIndex = findIndexByKey(afterKey, true);
+          if (afterIndex !== -1) {
+            return afterIndex + 1;
+          }
+        }
+
+        if (typeof attribute.insertIndex === 'number' && !Number.isNaN(attribute.insertIndex)) {
+          return Math.max(0, Math.min(attribute.insertIndex, filtered.length));
+        }
+      }
+
+      return determineIndexFromBaseOrder(attribute.id);
+    };
+
+    missingIds.forEach((attributeId) => {
+      const attribute = idToAttribute.get(attributeId);
+      if (!attribute) {
+        return;
+      }
+      const insertIndex = determineInsertIndex(attribute);
+      filtered.splice(insertIndex, 0, attributeId);
+    });
+
+    const nextIdOrder = filtered;
 
     const dedupedOrder: string[] = [];
     const seen = new Set<string>();
@@ -458,6 +572,26 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       .map(id => attrMap.get(id))
       .filter((a): a is DisplayAttribute => a !== undefined);
   }, [baseAttributes, visualOrder]);
+
+  // Publish visual order to store so TelemetryTree can use it for cross-section drops
+  React.useEffect(() => {
+    if (allAttributes.length === 0) {
+      return;
+    }
+
+    const visualIds = allAttributes.map((attr) => attr.id);
+    const currentOrder =
+      useTransformationStore.getState().visualAttributeOrder.get(section.id) ?? [];
+
+    if (
+      currentOrder.length === visualIds.length &&
+      currentOrder.every((id, index) => id === visualIds[index])
+    ) {
+      return;
+    }
+
+    setVisualAttributeOrder(section.id, visualIds);
+  }, [allAttributes, section.id, setVisualAttributeOrder]);
 
   const renamePrefixTransformations = React.useMemo(
     () =>

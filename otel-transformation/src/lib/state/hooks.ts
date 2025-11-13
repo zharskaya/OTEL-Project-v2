@@ -21,6 +21,7 @@ export function useTransformationActions() {
   const executeTransformations = useTransformationStore((state) => state.executeTransformations);
   const clearAll = useTransformationStore((state) => state.clearAll);
   const setAttributeOrder = useTransformationStore((state) => state.setAttributeOrder);
+  const setVisualAttributeOrder = useTransformationStore((state) => state.setVisualAttributeOrder);
   const setHoveredTransformationIds = useTransformationStore((state) => state.setHoveredTransformationIds);
   const clearHoveredTransformationIds = useTransformationStore((state) => state.clearHoveredTransformationIds);
   const setActiveRange = useTransformationStore((state) => state.setActiveRange);
@@ -34,6 +35,7 @@ export function useTransformationActions() {
       executeTransformations,
       clearAll,
       setAttributeOrder,
+      setVisualAttributeOrder,
       setHoveredTransformationIds,
       clearHoveredTransformationIds,
       setActiveRange,
@@ -46,6 +48,7 @@ export function useTransformationActions() {
       executeTransformations,
       clearAll,
       setAttributeOrder,
+      setVisualAttributeOrder,
       setHoveredTransformationIds,
       clearHoveredTransformationIds,
       setActiveRange,
@@ -133,6 +136,10 @@ export function useUpdateCount(sectionId: string) {
 
 export function useAttributeOrder() {
   return useTransformationStore((state) => state.attributeOrder);
+}
+
+export function useVisualAttributeOrder() {
+  return useTransformationStore((state) => state.visualAttributeOrder);
 }
 
 export function useActiveTransformationRange() {

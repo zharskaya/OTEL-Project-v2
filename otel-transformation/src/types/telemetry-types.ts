@@ -135,6 +135,7 @@ export interface DisplayAttribute {
   modifications: AttributeModification[];
   
   // Optional properties for special attribute types
+  sourceAttributePath?: string;
   isRawOTTL?: boolean;        // True if this represents a raw OTTL statement
   isGroup?: boolean;          // True if this is a group header for nested attributes
   groupCount?: number;        // Number of items in the group

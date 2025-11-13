@@ -103,7 +103,8 @@ export class TransformationEngine {
   static execute(
     inputData: ResourceSpan,
     transformations: Transformation[],
-    attributeOrder?: Map<string, string[]>
+    attributeOrder?: Map<string, string[]>,
+    visualAttributeOrder?: Map<string, string[]>
   ): TransformationResult {
     const startTime = performance.now();
 
@@ -144,8 +145,8 @@ export class TransformationEngine {
       this.applyModificationsToTree(transformedTree, modifications, activeTransformations);
       
       // Apply custom attribute ordering to match INPUT panel
-      if (attributeOrder) {
-        this.applyCustomOrder(transformedTree, attributeOrder, activeTransformations);
+    if (attributeOrder || visualAttributeOrder) {
+      this.applyCustomOrder(transformedTree, attributeOrder, visualAttributeOrder, activeTransformations);
       }
 
       const endTime = performance.now();
@@ -676,7 +677,8 @@ export class TransformationEngine {
   
   private static applyCustomOrder(
     tree: TelemetryTree,
-    attributeOrder: Map<string, string[]>,
+    attributeOrder: Map<string, string[]> | undefined,
+    visualAttributeOrder: Map<string, string[]> | undefined,
     transformations: Transformation[]
   ): void {
     // Apply custom ordering from drag-and-drop in INPUT panel
@@ -737,11 +739,35 @@ export class TransformationEngine {
         }
       });
 
-      const customOrderKeys = attributeOrder.get(section.id);
-      if (!customOrderKeys || customOrderKeys.length === 0) {
+      const visualOrderIds = visualAttributeOrder?.get(section.id);
+      if (visualOrderIds && visualOrderIds.length > 0) {
+        const attrById = new Map(section.attributes.map((attr) => [attr.id, attr]));
+        const reorderedByVisual: DisplayAttribute[] = [];
+        const seenVisual = new Set<string>();
+
+        visualOrderIds.forEach((id) => {
+          const attr = attrById.get(id);
+          if (attr && !seenVisual.has(attr.id)) {
+            reorderedByVisual.push(attr);
+            seenVisual.add(attr.id);
+          }
+        });
+
+        section.attributes.forEach((attr) => {
+          if (!seenVisual.has(attr.id)) {
+            reorderedByVisual.push(attr);
+            seenVisual.add(attr.id);
+          }
+        });
+
+        section.attributes = reorderedByVisual;
         return;
       }
 
+      const customOrderKeys = attributeOrder?.get(section.id);
+      if (!customOrderKeys || customOrderKeys.length === 0) {
+        return;
+      }
       const attrById = new Map(section.attributes.map((attr) => [attr.id, attr]));
       const attrByKey = new Map(section.attributes.map((attr) => [attr.key, attr]));
       const attrByPath = new Map(section.attributes.map((attr) => [attr.path, attr]));

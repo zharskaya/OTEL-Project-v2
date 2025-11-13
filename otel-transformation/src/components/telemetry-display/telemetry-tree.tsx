@@ -38,6 +38,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
   
   const transformations = useTransformations();
   const { addTransformation, setAttributeOrder, updateTransformation } = useTransformationActions();
+  const visualAttributeOrderMap = useTransformationStore((state) => state.visualAttributeOrder);
   const rawOttlCount = React.useMemo(
     () => transformations.filter((transformation) => transformation.type === TransformationType.RAW_OTTL).length,
     [transformations]
@@ -170,9 +171,10 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         return;
       }
 
-      const attributeOrderMap = storeState.attributeOrder;
-      const destSectionOrder = attributeOrderMap.get(overInfo.sectionId)
-        ? [...(attributeOrderMap.get(overInfo.sectionId) as string[])]
+      // Use visual order (actual rendered order) for computing insertion hints
+      const visualOrder = visualAttributeOrderMap.get(overInfo.sectionId) ?? [];
+      const destSectionVisualOrder = visualOrder.length > 0
+        ? [...visualOrder]
         : destSection
         ? destSection.attributes.map((a) => a.id)
         : [];
@@ -182,28 +184,29 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         destSection?.attributes.find((a) => a.id === overInfo.entityId)?.id ||
         null;
 
-      const existingIndex = destSectionOrder.indexOf(draggedId);
+      const existingIndex = destSectionVisualOrder.indexOf(draggedId);
       if (existingIndex !== -1) {
-        destSectionOrder.splice(existingIndex, 1);
+        destSectionVisualOrder.splice(existingIndex, 1);
       }
 
       const overSortable = (over.data.current as any)?.sortable;
 
-      let insertIndex = destSectionOrder.length;
+      let insertIndex = destSectionVisualOrder.length;
       if (dropTargetId) {
-        const idx = destSectionOrder.indexOf(dropTargetId);
+        const idx = destSectionVisualOrder.indexOf(dropTargetId);
         if (idx !== -1) {
           insertIndex = idx;
         }
       } else if (typeof overSortable?.index === 'number') {
-        insertIndex = Math.min(Math.max(overSortable.index, 0), destSectionOrder.length);
+        insertIndex = Math.min(Math.max(overSortable.index, 0), destSectionVisualOrder.length);
       }
 
-      const newOrder = [...destSectionOrder];
-      newOrder.splice(insertIndex, 0, draggedId);
-      setAttributeOrder(overInfo.sectionId, newOrder);
-      const insertBeforeId = newOrder[insertIndex + 1] ?? null;
-      const insertAfterId = insertIndex > 0 ? newOrder[insertIndex - 1] ?? null : null;
+      const newVisualOrder = [...destSectionVisualOrder];
+      newVisualOrder.splice(insertIndex, 0, draggedId);
+      
+      // Compute insertion hints based on visual order
+      const insertBeforeId = newVisualOrder[insertIndex + 1] ?? null;
+      const insertAfterId = insertIndex > 0 ? newVisualOrder[insertIndex - 1] ?? null : null;
       const destinationAttributeMap = new Map<string, DisplayAttribute>();
       destSection?.attributes.forEach((attribute) => {
         destinationAttributeMap.set(attribute.id, attribute);
@@ -212,6 +215,22 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const insertAfterAttribute = insertAfterId ? destinationAttributeMap.get(insertAfterId) : null;
       const insertBeforeKey = insertBeforeAttribute?.key ?? null;
       const insertAfterKey = insertAfterAttribute?.key ?? null;
+
+      // Update the stored order (token-based) to include the moved item
+      const attributeOrderMap = storeState.attributeOrder;
+      const destSectionOrder = attributeOrderMap.get(overInfo.sectionId)
+        ? [...(attributeOrderMap.get(overInfo.sectionId) as string[])]
+        : destSection
+        ? destSection.attributes.map((a) => a.path)
+        : [];
+      const draggedToken = draggedAttr.path || draggedId;
+      const existingTokenIndex = destSectionOrder.indexOf(draggedToken);
+      if (existingTokenIndex !== -1) {
+        destSectionOrder.splice(existingTokenIndex, 1);
+      }
+      const newOrder = [...destSectionOrder];
+      newOrder.splice(insertIndex, 0, draggedToken);
+      setAttributeOrder(overInfo.sectionId, newOrder);
 
       const allowTransformMoveTypes = new Set<TransformationType | string>([
         TransformationType.ADD_STATIC,
@@ -669,6 +688,43 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       }
     }
 
+    // Use visual order for computing insertion index
+    const destVisualOrder = visualAttributeOrderMap.get(overInfo.sectionId) ?? [];
+    const destVisualIds = destVisualOrder.length > 0
+      ? [...destVisualOrder]
+      : destinationSection.attributes.map((a) => a.id);
+
+    // Remove group attributes if they're already in the destination
+    const filteredDestVisualIds = destVisualIds.filter((id) => !groupIdSet.has(id));
+
+    const dropTargetAttribute = (() => {
+      if (!overData) {
+        return null;
+      }
+      if (overInfo.entityType === 'group' || overData.type === 'group') {
+        const attributes: DisplayAttribute[] = Array.isArray(overData.groupAttributes)
+          ? overData.groupAttributes
+          : [];
+        return attributes.find((attribute) => !groupIdSet.has(attribute.id)) ?? null;
+      }
+      const attribute = overData.attribute as DisplayAttribute | undefined;
+      if (attribute && !groupIdSet.has(attribute.id)) {
+        return attribute;
+      }
+      return null;
+    })();
+
+    const dropTargetAttributeId = dropTargetAttribute?.id ?? null;
+
+    let insertIndex = filteredDestVisualIds.length;
+    if (dropTargetAttributeId) {
+      const idx = filteredDestVisualIds.findIndex((candidateId) => candidateId === dropTargetAttributeId);
+      if (idx !== -1) {
+        insertIndex = idx;
+      }
+    }
+
+    // Update the token-based order
     const destinationOrderRaw =
       attributeOrder.get(overInfo.sectionId) ??
       destinationSection.attributes.map((attribute) => attribute.path);
@@ -737,41 +793,12 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     });
 
     const destinationTokens: string[] = [];
-    const destinationAttributeIds: Array<string | null> = [];
     destinationAssignments.forEach(({ token, attributeId }) => {
       if (attributeId && groupIdSet.has(attributeId)) {
         return;
       }
       destinationTokens.push(token);
-      destinationAttributeIds.push(attributeId);
     });
-
-    const dropTargetAttribute = (() => {
-      if (!overData) {
-        return null;
-      }
-      if (overInfo.entityType === 'group' || overData.type === 'group') {
-        const attributes: DisplayAttribute[] = Array.isArray(overData.groupAttributes)
-          ? overData.groupAttributes
-          : [];
-        return attributes.find((attribute) => !groupIdSet.has(attribute.id)) ?? null;
-      }
-      const attribute = overData.attribute as DisplayAttribute | undefined;
-      if (attribute && !groupIdSet.has(attribute.id)) {
-        return attribute;
-      }
-      return null;
-    })();
-
-    const dropTargetAttributeId = dropTargetAttribute?.id ?? null;
-
-    let insertIndex = destinationTokens.length;
-    if (dropTargetAttributeId) {
-      const idx = destinationAttributeIds.findIndex((candidateId) => candidateId === dropTargetAttributeId);
-      if (idx !== -1) {
-        insertIndex = idx;
-      }
-    }
 
     const tokensForInsertion = fullGroupAttributes.map((attribute) => {
       const existingTokens = destinationTokensByAttributeId.get(attribute.id);
