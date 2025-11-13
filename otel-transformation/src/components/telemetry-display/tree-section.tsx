@@ -881,11 +881,7 @@ function AttributeGroupRow({
     moveGroupTransformation?.status === TransformationStatus.ACTIVE ||
     moveGroupTransformation?.status === undefined;
   const moveBadgeClass = (() => {
-    const baseClass = isGroupMoveSource
-      ? 'bg-red-600 text-white'
-      : isGroupMoveDestination
-        ? 'bg-green-600 text-white'
-        : 'bg-blue-600 text-white';
+    const baseClass = isGroupMoveSource ? 'bg-red-600 text-white' : 'bg-orange-500 text-white';
     return isMoveGroupActive ? baseClass : 'bg-gray-300/60 text-gray-500';
   })();
   const moveBadgeLabel = isGroupMoveSource ? 'MOVED OUT' : isGroupMoveDestination ? 'MOVED IN' : 'MOVE';

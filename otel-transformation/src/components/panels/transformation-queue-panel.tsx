@@ -1218,7 +1218,7 @@ function getActionClassName(action: string): string {
     case 'ADD':
       return 'bg-green-600 text-white';
     case 'MOVE':
-      return 'bg-green-600 text-white';
+      return 'bg-orange-500 text-white';
     case 'DELETE':
       return 'bg-red-600 text-white';
     case 'MASK':

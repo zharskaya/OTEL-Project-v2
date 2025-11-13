@@ -914,11 +914,7 @@ const activeModifications = shouldTreatAsGroupRename
         return null;
       }
       const text = isGroupMoveSource ? 'MOVED OUT' : isGroupMoveDestination ? 'MOVED IN' : 'MOVE';
-      const badgeClass = isGroupMoveSource
-        ? 'bg-red-600 text-white'
-        : isGroupMoveDestination
-          ? 'bg-green-600 text-white'
-          : 'bg-blue-600 text-white';
+      const badgeClass = isGroupMoveSource ? 'bg-red-600 text-white' : 'bg-orange-500 text-white';
       return (
         <div className="flex flex-col items-end gap-1 text-right">
           <span className={`${BADGE_BASE_CLASS} ${badgeClass}`}>{text}</span>
@@ -951,10 +947,11 @@ const activeModifications = shouldTreatAsGroupRename
     const badges: React.ReactNode[] = [];
 
     const addLabel = isMovedIn ? 'MOVED IN' : 'ADD';
+    const addBadgeColor = isMovedIn ? 'bg-orange-500 text-white' : 'bg-green-600 text-white';
     const labelMap: Record<string, { text: string; color: string }> = {
-      'add': { text: addLabel, color: 'bg-green-600 text-white' },
-      'add-static': { text: addLabel, color: 'bg-green-600 text-white' },
-      'add-substring': { text: addLabel, color: 'bg-green-600 text-white' },
+      'add': { text: addLabel, color: addBadgeColor },
+      'add-static': { text: addLabel, color: addBadgeColor },
+      'add-substring': { text: addLabel, color: addBadgeColor },
       'raw-ottl': { text: 'OTTL', color: 'bg-purple-600 text-white' },
       'delete': { text: 'DELETE', color: 'bg-red-600 text-white' },
     };

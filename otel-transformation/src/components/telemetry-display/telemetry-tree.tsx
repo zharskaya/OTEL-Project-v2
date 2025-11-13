@@ -224,7 +224,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         : destSection
         ? destSection.attributes.map((attribute) => getAttributeOrderToken(attribute))
         : [];
-      const draggedToken = getAttributeOrderToken(draggedAttr);
+      const draggedToken = draggedAttr.id ?? getAttributeOrderToken(draggedAttr);
       const existingTokenIndex = destSectionOrder.indexOf(draggedToken);
       if (existingTokenIndex !== -1) {
         destSectionOrder.splice(existingTokenIndex, 1);
@@ -626,69 +626,6 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       } satisfies MoveGroupParams,
     });
 
-    const attributeOrder = useTransformationStore.getState().attributeOrder;
-    const sourceOrder = attributeOrder.get(activeInfo.sectionId);
-    if (sourceOrder) {
-      const sourceAttributes = [...sourceSection.attributes];
-      fullGroupAttributes.forEach((attribute) => {
-        if (!sourceAttributes.some((existing) => existing.id === attribute.id)) {
-          sourceAttributes.push(attribute);
-        }
-      });
-
-      const sourceIdToAttribute = new Map(sourceAttributes.map((attribute) => [attribute.id, attribute]));
-      const sourcePathToId = new Map<string, string>();
-      sourceAttributes.forEach((attribute) => {
-        if (attribute.path) {
-          sourcePathToId.set(attribute.path, attribute.id);
-        }
-      });
-      const sourceKeyToIds = new Map<string, string[]>();
-      sourceAttributes.forEach((attribute) => {
-        if (!attribute.key) {
-          return;
-        }
-        const bucket = sourceKeyToIds.get(attribute.key);
-        if (bucket) {
-          bucket.push(attribute.id);
-        } else {
-          sourceKeyToIds.set(attribute.key, [attribute.id]);
-        }
-      });
-
-      const sourceKeyUsage = new Map<string, number>();
-      const resolveSourceTokenToId = (token: string): string | null => {
-        if (sourceIdToAttribute.has(token)) {
-          return token;
-        }
-        const byPath = sourcePathToId.get(token);
-        if (byPath) {
-          return byPath;
-        }
-        const idsForKey = sourceKeyToIds.get(token);
-        if (idsForKey && idsForKey.length > 0) {
-          const usage = sourceKeyUsage.get(token) ?? 0;
-          const boundedIndex = Math.min(usage, idsForKey.length - 1);
-          sourceKeyUsage.set(token, usage + 1);
-          return idsForKey[boundedIndex];
-        }
-        return null;
-      };
-
-      const filteredSourceTokens: string[] = [];
-      sourceOrder.forEach((token) => {
-        const attributeId = resolveSourceTokenToId(token);
-        if (attributeId && groupIdSet.has(attributeId)) {
-          return;
-        }
-        filteredSourceTokens.push(token);
-      });
-
-      if (filteredSourceTokens.length !== sourceOrder.length) {
-        setAttributeOrder(activeInfo.sectionId, filteredSourceTokens);
-      }
-    }
-
     // Use visual order for computing insertion index
     const destVisualOrder = visualAttributeOrderMap.get(overInfo.sectionId) ?? [];
     const destVisualIds = destVisualOrder.length > 0
@@ -726,6 +663,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     }
 
     // Update the token-based order
+    const attributeOrder = useTransformationStore.getState().attributeOrder;
     const destinationOrderRaw =
       attributeOrder.get(overInfo.sectionId) ??
       destinationSection.attributes.map((attribute) => getAttributeOrderToken(attribute));
@@ -806,10 +744,13 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       if (existingTokens && existingTokens.length > 0) {
         return existingTokens[0];
       }
+      if (attribute.id) {
+        return attribute.id;
+      }
       if (attribute.path) {
         return attribute.path;
       }
-      return attribute.id;
+      return `${moveTransformationId}-${attribute.key}`;
     });
 
     const nextOrder = [...destinationTokens];
