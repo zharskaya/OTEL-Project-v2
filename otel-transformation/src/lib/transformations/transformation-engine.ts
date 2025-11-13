@@ -17,6 +17,83 @@ import {
 } from '@/types/transformation-types';
 import { TelemetryParser } from '@/lib/telemetry/telemetry-parser';
 
+class KeyAliasTracker {
+  private readonly sectionKeyAliases = new Map<string, Map<string, string>>();
+  private readonly pathKeyAliases = new Map<string, string>();
+  private readonly sectionPrefixAliases = new Map<
+    string,
+    Array<{ oldPrefix: string; newPrefix: string }>
+  >();
+
+  resolveKey(sectionId: string, key: string, attributePath?: string): string {
+    let currentKey = key;
+
+    if (attributePath) {
+      const pathAlias = this.pathKeyAliases.get(attributePath);
+      if (pathAlias) {
+        currentKey = pathAlias;
+      }
+    }
+
+    const prefixAliases = this.sectionPrefixAliases.get(sectionId);
+    if (prefixAliases) {
+      for (const { oldPrefix, newPrefix } of prefixAliases) {
+        if (currentKey === oldPrefix) {
+          currentKey = newPrefix;
+          break;
+        }
+        if (currentKey.startsWith(`${oldPrefix}/`)) {
+          currentKey = `${newPrefix}${currentKey.slice(oldPrefix.length)}`;
+          break;
+        }
+      }
+    }
+
+    const sectionAliases = this.sectionKeyAliases.get(sectionId);
+    if (!sectionAliases) {
+      return currentKey;
+    }
+
+    const visited = new Set<string>();
+    let resolved = currentKey;
+    while (sectionAliases.has(resolved) && !visited.has(resolved)) {
+      visited.add(resolved);
+      resolved = sectionAliases.get(resolved)!;
+    }
+
+    return resolved;
+  }
+
+  registerKeyAlias(sectionId: string, fromKey?: string, toKey?: string) {
+    if (!fromKey || !toKey || fromKey === toKey) {
+      return;
+    }
+    let map = this.sectionKeyAliases.get(sectionId);
+    if (!map) {
+      map = new Map();
+      this.sectionKeyAliases.set(sectionId, map);
+    }
+    map.set(fromKey, toKey);
+  }
+
+  registerPathAlias(attributePath?: string, key?: string) {
+    if (!attributePath || !key) {
+      return;
+    }
+    this.pathKeyAliases.set(attributePath, key);
+  }
+
+  registerPrefixAlias(sectionId: string, oldPrefix?: string, newPrefix?: string) {
+    if (!oldPrefix || !newPrefix || oldPrefix === newPrefix) {
+      return;
+    }
+    const aliases = this.sectionPrefixAliases.get(sectionId) ?? [];
+    aliases.unshift({ oldPrefix, newPrefix });
+    this.sectionPrefixAliases.set(sectionId, aliases);
+    this.registerKeyAlias(sectionId, oldPrefix, newPrefix);
+  }
+}
+
 /**
  * Transformation Engine
  * 
@@ -36,6 +113,7 @@ export class TransformationEngine {
 
       // Track modifications for highlighting
       const modifications = new Map<string, any[]>();
+      const keyAliasTracker = new KeyAliasTracker();
 
       const activeTransformations = transformations.filter(
         (transformation) => transformation.status === TransformationStatus.ACTIVE
@@ -51,7 +129,12 @@ export class TransformationEngine {
 
       // Apply transformations sequentially
       for (const transformation of activeTransformations) {
-        transformedData = this.applyTransformation(transformedData, transformation, modifications);
+        transformedData = this.applyTransformation(
+          transformedData,
+          transformation,
+          modifications,
+          keyAliasTracker
+        );
       }
 
       // Parse the transformed data into a tree for display
@@ -95,7 +178,8 @@ export class TransformationEngine {
   private static applyTransformation(
     data: ResourceSpan,
     transformation: Transformation,
-    modifications: Map<string, any[]>
+    modifications: Map<string, any[]>,
+    keyAliasTracker: KeyAliasTracker
   ): ResourceSpan {
     const params = transformation.params as any;
     
@@ -106,6 +190,10 @@ export class TransformationEngine {
         // Add new attribute to appropriate section
         const sectionId = transformation.sectionId;
         const key = params.key || params.newKey;
+        const resolvedSourceKey =
+          transformation.type === TransformationType.ADD_SUBSTRING && params.sourceKey
+            ? keyAliasTracker.resolveKey(sectionId, params.sourceKey, params.sourceAttributePath)
+            : params.sourceKey;
         
         // Track as added
         const modKey = `${sectionId}:${key}`;
@@ -124,18 +212,22 @@ export class TransformationEngine {
             const sourceRaw = (params as AddSubstringParams).sourceAttributePath;
             const [sectionPrefix] = sourceRaw?.split('.') ?? [];
             const extractValue = () => {
+              if (!resolvedSourceKey) {
+                return '';
+              }
               if (sectionId.includes('resource')) {
-                const sourceAttr = data.resource.attributes.find((attribute) => attribute.key === params.sourceKey);
+                const sourceAttr = data.resource.attributes.find((attribute) => attribute.key === resolvedSourceKey);
                 return sourceAttr?.value?.stringValue ?? '';
               }
               if (sectionId.includes('span-attributes')) {
                 const span = data.scopeSpans[0]?.spans[0];
-                const sourceAttr = span?.attributes.find((attribute) => attribute.key === params.sourceKey);
+                const sourceAttr = span?.attributes.find((attribute) => attribute.key === resolvedSourceKey);
                 return sourceAttr?.value?.stringValue ?? '';
               }
               if (sectionId.includes('span-info')) {
                 const span = data.scopeSpans[0]?.spans[0];
-                const value = span ? (span as unknown as Record<string, unknown>)[params.sourceKey] : undefined;
+                const spanRecord = span as unknown as Record<string, unknown>;
+                const value = span && resolvedSourceKey ? spanRecord[resolvedSourceKey] : undefined;
                 return typeof value === 'string' ? value : value != null ? String(value) : '';
               }
               return '';
@@ -176,7 +268,8 @@ export class TransformationEngine {
       case TransformationType.DELETE: {
         const key = params.attributeKey;
         const sectionId = transformation.sectionId;
-        const modKey = `${sectionId}:${key}`;
+        const resolvedKey = keyAliasTracker.resolveKey(sectionId, key, params.attributePath);
+        const modKey = `${sectionId}:${resolvedKey}`;
         if (!modifications.has(modKey)) {
           modifications.set(modKey, []);
         }
@@ -188,17 +281,17 @@ export class TransformationEngine {
         });
 
         if (sectionId.includes('resource')) {
-          data.resource.attributes = data.resource.attributes.filter(attr => attr.key !== key);
+          data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== resolvedKey);
         } else if (sectionId.includes('span-attributes')) {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
-            span.attributes = span.attributes.filter(attr => attr.key !== key);
+            span.attributes = span.attributes.filter((attr) => attr.key !== resolvedKey);
           }
         } else if (sectionId.includes('span-info')) {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
             const spanRecord = span as unknown as Record<string, unknown>;
-            delete spanRecord[key];
+            delete spanRecord[resolvedKey];
           }
         }
         break;
@@ -206,10 +299,11 @@ export class TransformationEngine {
       
       case TransformationType.DELETE_GROUP: {
         const sectionId = transformation.sectionId;
-        const attributeEntries = params.attributes as Array<{ key: string }>;
+        const attributeEntries = params.attributes as Array<{ key: string; path: string }>;
 
-        attributeEntries.forEach(({ key }) => {
-          const modKey = `${sectionId}:${key}`;
+        attributeEntries.forEach(({ key, path }) => {
+          const resolvedKey = keyAliasTracker.resolveKey(sectionId, key, path);
+          const modKey = `${sectionId}:${resolvedKey}`;
           if (!modifications.has(modKey)) {
             modifications.set(modKey, []);
           }
@@ -221,15 +315,16 @@ export class TransformationEngine {
           });
         });
 
-        const removeAttribute = (key: string) => {
+        const removeAttribute = (keyToRemove: string, path?: string) => {
+          const resolved = keyAliasTracker.resolveKey(sectionId, keyToRemove, path);
           if (sectionId.includes('resource')) {
-            data.resource.attributes = data.resource.attributes.filter(attr => attr.key !== key);
+            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== resolved);
             return;
           }
           if (sectionId.includes('span-attributes')) {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
-              span.attributes = span.attributes.filter(attr => attr.key !== key);
+              span.attributes = span.attributes.filter((attr) => attr.key !== resolved);
             }
             return;
           }
@@ -237,12 +332,12 @@ export class TransformationEngine {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
               const spanRecord = span as unknown as Record<string, unknown>;
-              delete spanRecord[key];
+              delete spanRecord[resolved];
             }
           }
         };
 
-        attributeEntries.forEach(({ key }) => removeAttribute(key));
+        attributeEntries.forEach(({ key, path }) => removeAttribute(key, path));
         break;
       }
 
@@ -261,20 +356,23 @@ export class TransformationEngine {
           });
         };
 
-        moveParams.attributes.forEach(({ key }) => {
-          appendModification(moveParams.fromSectionId, key);
-          appendModification(moveParams.toSectionId, key);
+        moveParams.attributes.forEach(({ key, path }) => {
+          const fromResolved = keyAliasTracker.resolveKey(moveParams.fromSectionId, key, path);
+          const toResolved = keyAliasTracker.resolveKey(moveParams.toSectionId, key, path);
+          appendModification(moveParams.fromSectionId, fromResolved);
+          appendModification(moveParams.toSectionId, toResolved);
         });
 
-        const removeAttribute = (sectionId: string, key: string) => {
+        const removeAttribute = (sectionId: string, keyToRemove: string, path?: string) => {
+          const resolved = keyAliasTracker.resolveKey(sectionId, keyToRemove, path);
           if (sectionId.includes('resource')) {
-            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== key);
+            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== resolved);
             return;
           }
           if (sectionId.includes('span-attributes')) {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
-              span.attributes = span.attributes.filter((attr) => attr.key !== key);
+              span.attributes = span.attributes.filter((attr) => attr.key !== resolved);
             }
             return;
           }
@@ -282,7 +380,7 @@ export class TransformationEngine {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
               const spanRecord = span as unknown as Record<string, unknown>;
-              delete spanRecord[key];
+              delete spanRecord[resolved];
             }
           }
         };
@@ -329,11 +427,18 @@ export class TransformationEngine {
           }
         };
 
-        const addAttribute = (sectionId: string, key: string, value: string, valueType: ValueType) => {
+        const addAttribute = (
+          sectionId: string,
+          keyToAdd: string,
+          value: string,
+          valueType: ValueType,
+          path?: string
+        ) => {
+          const resolved = keyAliasTracker.resolveKey(sectionId, keyToAdd, path);
           if (sectionId.includes('resource')) {
-            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== key);
+            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== resolved);
             data.resource.attributes.push({
-              key,
+              key: resolved,
               value: toAnyValue(value, valueType),
             });
             return;
@@ -341,9 +446,9 @@ export class TransformationEngine {
           if (sectionId.includes('span-attributes')) {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
-              span.attributes = span.attributes.filter((attr) => attr.key !== key);
+              span.attributes = span.attributes.filter((attr) => attr.key !== resolved);
               span.attributes.push({
-                key,
+                key: resolved,
                 value: toAnyValue(value, valueType),
               });
             }
@@ -353,14 +458,16 @@ export class TransformationEngine {
             const span = data.scopeSpans[0]?.spans[0];
             if (span) {
               const spanRecord = span as unknown as Record<string, unknown>;
-              spanRecord[key] = toPrimitive(value, valueType);
+              spanRecord[resolved] = toPrimitive(value, valueType);
             }
           }
         };
 
-        moveParams.attributes.forEach(({ key }) => removeAttribute(moveParams.fromSectionId, key));
-        moveParams.attributes.forEach(({ key, value, valueType }) =>
-          addAttribute(moveParams.toSectionId, key, value, valueType)
+        moveParams.attributes.forEach(({ key, path }) =>
+          removeAttribute(moveParams.fromSectionId, key, path)
+        );
+        moveParams.attributes.forEach(({ key, path, value, valueType }) =>
+          addAttribute(moveParams.toSectionId, key, value, valueType, path)
         );
 
         break;
@@ -370,12 +477,13 @@ export class TransformationEngine {
         // Mask the attribute value
         const key = params.attributeKey;
         const sectionId = transformation.sectionId;
+        const resolvedKey = keyAliasTracker.resolveKey(sectionId, key, params.attributePath);
         const maskStart = params.maskStart;
         const maskEnd = params.maskEnd;
         const maskChar = params.maskChar || '*';
         
         // Track as modified
-        const modKey = `${sectionId}:${key}`;
+        const modKey = `${sectionId}:${resolvedKey}`;
         if (!modifications.has(modKey)) {
           modifications.set(modKey, []);
         }
@@ -388,7 +496,7 @@ export class TransformationEngine {
         
         // Apply masking - always use 5 asterisks
         const applyMask = (attributes: any[]) => {
-          const attr = attributes.find(a => a.key === key);
+          const attr = attributes.find((a) => a.key === resolvedKey);
           if (attr && attr.value.stringValue) {
             const original = attr.value.stringValue;
             const endIdx = maskEnd === 'end' ? original.length : maskEnd;
@@ -411,14 +519,15 @@ export class TransformationEngine {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
             const spanRecord = span as unknown as Record<string, any>;
-            const currentValue = spanRecord[key];
+            const currentKey = resolvedKey;
+            const currentValue = spanRecord[currentKey];
             if (typeof currentValue === 'string') {
               const original = currentValue;
               const effectiveEnd = maskEnd === 'end' ? original.length : Math.min(maskEnd, original.length);
               const effectiveStart = Math.max(0, Math.min(maskStart, original.length));
               if (effectiveStart < effectiveEnd) {
                 const maskedSegment = maskChar.repeat(effectiveEnd - effectiveStart);
-                spanRecord[key] = `${original.slice(0, effectiveStart)}${maskedSegment}${original.slice(effectiveEnd)}`;
+                spanRecord[currentKey] = `${original.slice(0, effectiveStart)}${maskedSegment}${original.slice(effectiveEnd)}`;
               }
             }
           }
@@ -428,17 +537,21 @@ export class TransformationEngine {
       
       case TransformationType.RENAME_PREFIX: {
         const { oldPrefix, newPrefix } = params as RenamePrefixParams;
+        const sectionId = transformation.sectionId;
+        const effectiveOldPrefix = keyAliasTracker.resolveKey(sectionId, oldPrefix);
+
         const renameInAttributes = (attributes: Array<{ key: string }>) => {
           attributes.forEach((attribute) => {
             if (!attribute.key) {
               return;
             }
-            if (attribute.key === oldPrefix) {
+            const resolvedKey = keyAliasTracker.resolveKey(sectionId, attribute.key);
+            if (resolvedKey === effectiveOldPrefix) {
               attribute.key = newPrefix;
               return;
             }
-            if (attribute.key.startsWith(`${oldPrefix}/`)) {
-              attribute.key = `${newPrefix}${attribute.key.slice(oldPrefix.length)}`;
+            if (resolvedKey.startsWith(`${effectiveOldPrefix}/`)) {
+              attribute.key = `${newPrefix}${resolvedKey.slice(effectiveOldPrefix.length)}`;
             }
           });
         };
@@ -469,6 +582,11 @@ export class TransformationEngine {
           });
         }
 
+        keyAliasTracker.registerPrefixAlias(sectionId, oldPrefix, newPrefix);
+        if (effectiveOldPrefix !== oldPrefix) {
+          keyAliasTracker.registerPrefixAlias(sectionId, effectiveOldPrefix, newPrefix);
+        }
+
         const groupModKey = `${transformation.sectionId}::group::${newPrefix}`;
         if (!modifications.has(groupModKey)) {
           modifications.set(groupModKey, []);
@@ -488,6 +606,7 @@ export class TransformationEngine {
         const oldKey = params.oldKey;
         const newKey = params.newKey;
         const sectionId = transformation.sectionId;
+        const resolvedOldKey = keyAliasTracker.resolveKey(sectionId, oldKey, params.attributePath);
         
         // Track as modified (use newKey for tracking)
         const modKey = `${sectionId}:${newKey}`;
@@ -503,7 +622,7 @@ export class TransformationEngine {
         
         // Apply rename
         const applyRename = (attributes: any[]) => {
-          const attr = attributes.find(a => a.key === oldKey);
+          const attr = attributes.find((a) => a.key === resolvedOldKey);
           if (attr) {
             attr.key = newKey;
           }
@@ -520,12 +639,18 @@ export class TransformationEngine {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
             const spanRecord = span as unknown as Record<string, any>;
-            if (Object.prototype.hasOwnProperty.call(spanRecord, oldKey)) {
-              spanRecord[newKey] = spanRecord[oldKey];
-              delete spanRecord[oldKey];
+            if (Object.prototype.hasOwnProperty.call(spanRecord, resolvedOldKey)) {
+              spanRecord[newKey] = spanRecord[resolvedOldKey];
+              delete spanRecord[resolvedOldKey];
             }
           }
         }
+
+        keyAliasTracker.registerKeyAlias(sectionId, oldKey, newKey);
+        if (resolvedOldKey !== oldKey) {
+          keyAliasTracker.registerKeyAlias(sectionId, resolvedOldKey, newKey);
+        }
+        keyAliasTracker.registerPathAlias(params.attributePath, newKey);
         break;
       }
     }
@@ -646,4 +771,5 @@ export class TransformationEngine {
     });
   }
 }
+
 
