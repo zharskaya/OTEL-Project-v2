@@ -11,6 +11,7 @@ import {
   TransformationType,
   TransformationStatus,
   type AddStaticParams,
+  type AddSubstringParams,
   type MoveGroupParams,
   type RenamePrefixParams,
 } from '@/types/transformation-types';
