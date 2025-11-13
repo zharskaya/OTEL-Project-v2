@@ -162,6 +162,7 @@ export function RenameKeyForm({
         sectionId,
         createdAt: new Date(),
         status: TransformationStatus.ACTIVE,
+        pairedTransformationId: undefined,
       });
       reorderTransformations(
         existingRename.id,

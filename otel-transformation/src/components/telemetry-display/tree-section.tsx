@@ -320,8 +320,8 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     const currentStoredOrder = useTransformationStore.getState().attributeOrder.get(section.id);
 
     if (!currentStoredOrder || currentStoredOrder.length === 0) {
-      const idOrder = baseAttributes.map((a) => a.id);
-      setAttributeOrder(section.id, idOrder);
+      const initialTokenOrder = baseAttributes.map((attribute) => attribute.path);
+      setAttributeOrder(section.id, initialTokenOrder);
     }
 
     hasInitialized.current = true;
@@ -331,16 +331,49 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   // Update visual order when base attributes change OR stored order changes
   React.useEffect(() => {
     const idToAttribute = new Map<string, DisplayAttribute>();
+    const idByPath = new Map<string, string>();
+    const keyToIds = new Map<string, string[]>();
+
     baseAttributes.forEach((attr) => {
       idToAttribute.set(attr.id, attr);
+      idByPath.set(attr.path, attr.id);
+      const list = keyToIds.get(attr.key);
+      if (list) {
+        list.push(attr.id);
+      } else {
+        keyToIds.set(attr.key, [attr.id]);
+      }
     });
+
+    const keyUsage = new Map<string, number>();
+    const resolveTokenToId = (token: string): string | null => {
+      if (idToAttribute.has(token)) {
+        return token;
+      }
+      const pathMatch = idByPath.get(token);
+      if (pathMatch) {
+        return pathMatch;
+      }
+      const idsForKey = keyToIds.get(token);
+      if (idsForKey && idsForKey.length > 0) {
+        const usage = keyUsage.get(token) ?? 0;
+        const boundedIndex = Math.min(usage, idsForKey.length - 1);
+        keyUsage.set(token, usage + 1);
+        return idsForKey[boundedIndex];
+      }
+      return null;
+    };
 
     const allIds = baseAttributes.map((attr) => attr.id);
 
     let nextIdOrder: string[];
 
     if (storedAttributeOrder && storedAttributeOrder.length > 0) {
-      const filtered = storedAttributeOrder.filter((id) => idToAttribute.has(id));
+      const resolvedStored = storedAttributeOrder
+        .map((token) => resolveTokenToId(token))
+        .filter((id): id is string => id != null);
+
+      const filtered = resolvedStored.filter((id) => idToAttribute.has(id));
       const missing = allIds.filter((id) => !filtered.includes(id));
       missing.forEach((id) => {
         const targetIndex = allIds.indexOf(id);
@@ -384,15 +417,25 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       return dedupedOrder;
     });
 
-    const normalizedStored = storedAttributeOrder
-      ? storedAttributeOrder.filter((id) => idToAttribute.has(id))
-      : [];
+    const currentTokenOrder = storedAttributeOrder ?? [];
+    const resolvedStoredIds = currentTokenOrder
+      .map((token) => resolveTokenToId(token))
+      .filter((id): id is string => id != null);
 
-    if (
-      normalizedStored.length !== dedupedOrder.length ||
-      normalizedStored.some((id, index) => id !== dedupedOrder[index])
-    ) {
-      setAttributeOrder(section.id, dedupedOrder);
+    const tokensForDeduped = dedupedOrder.map(
+      (id) => idToAttribute.get(id)?.path ?? id
+    );
+
+    const idsMatch =
+      resolvedStoredIds.length === dedupedOrder.length &&
+      resolvedStoredIds.every((id, index) => id === dedupedOrder[index]);
+
+    const tokensMatch =
+      currentTokenOrder.length === tokensForDeduped.length &&
+      currentTokenOrder.every((token, index) => token === tokensForDeduped[index]);
+
+    if (!idsMatch || !tokensMatch) {
+      setAttributeOrder(section.id, tokensForDeduped);
     }
   }, [baseAttributes, storedAttributeOrder, section.id, setAttributeOrder]);
   
@@ -1000,15 +1043,24 @@ function AttributeGroupRow({
 
     removeTransformation(moveGroupTransformation.id);
 
-    const groupIds = groupedAttributes.map(({ id }) => id);
+    const groupIds = new Set(groupedAttributes.map(({ id }) => id));
+    const groupPaths = new Set(groupedAttributes.map(({ path }) => path));
+    const shouldRemoveToken = (token: string) =>
+      groupIds.has(token) || groupPaths.has(token);
+
     const storeState = useTransformationStore.getState();
     const attributeOrderMap = storeState.attributeOrder;
 
     const sourceOrder = attributeOrderMap.get(moveGroupParams.fromSectionId) ?? [];
     const destinationOrder = attributeOrderMap.get(moveGroupParams.toSectionId) ?? [];
 
-    const restoredSourceOrder = [...sourceOrder.filter((id) => !groupIds.includes(id)), ...groupIds];
-    const updatedDestinationOrder = destinationOrder.filter((id) => !groupIds.includes(id));
+    const restoredSourceOrder = [
+      ...sourceOrder.filter((token) => !shouldRemoveToken(token)),
+      ...groupedAttributes.map(({ path }) => path),
+    ];
+    const updatedDestinationOrder = destinationOrder.filter(
+      (token) => !shouldRemoveToken(token)
+    );
 
     setAttributeOrder(moveGroupParams.fromSectionId, restoredSourceOrder);
     setAttributeOrder(moveGroupParams.toSectionId, updatedDestinationOrder);

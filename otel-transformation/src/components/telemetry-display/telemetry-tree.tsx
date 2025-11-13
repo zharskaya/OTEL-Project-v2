@@ -409,7 +409,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const attributeOrder = useTransformationStore.getState().attributeOrder;
       const currentOrder = attributeOrder.get(sectionId)
         ? [...(attributeOrder.get(sectionId) as string[])]
-        : section.attributes.map((attribute) => attribute.id);
+        : section.attributes.map((attribute) => attribute.path);
 
       if (currentOrder.length === 0) {
         return;
@@ -505,9 +505,12 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     const attributeOrder = useTransformationStore.getState().attributeOrder;
     const sourceOrder = attributeOrder.get(activeInfo.sectionId);
     if (sourceOrder) {
-      const filtered = sourceOrder.filter(
-        (id) => !fullGroupAttributes.some((attribute) => attribute.id === id)
-      );
+      const groupIdSet = new Set(fullGroupAttributes.map((attribute) => attribute.id));
+      const groupPathSet = new Set(fullGroupAttributes.map((attribute) => attribute.path));
+      const shouldRemoveToken = (token: string) =>
+        groupIdSet.has(token) || groupPathSet.has(token);
+
+      const filtered = sourceOrder.filter((token) => !shouldRemoveToken(token));
       if (filtered.length !== sourceOrder.length) {
         setAttributeOrder(activeInfo.sectionId, filtered);
       }
@@ -515,24 +518,34 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
     const destinationOrderRaw =
       attributeOrder.get(overInfo.sectionId) ??
-      destinationSection.attributes.map((attribute) => attribute.id);
+      destinationSection.attributes.map((attribute) => attribute.path);
 
-    const groupIds = fullGroupAttributes.map((attribute) => attribute.id);
-    const destinationOrder = destinationOrderRaw.filter((id) => !groupIds.includes(id));
+    const groupIdSet = new Set(fullGroupAttributes.map((attribute) => attribute.id));
+    const groupPathSet = new Set(fullGroupAttributes.map((attribute) => attribute.path));
+    const groupPaths = fullGroupAttributes.map((attribute) => attribute.path);
+    const shouldRemoveToken = (token: string) =>
+      groupIdSet.has(token) || groupPathSet.has(token);
+
+    const destinationOrder = destinationOrderRaw.filter((token) => !shouldRemoveToken(token));
 
     const dropTargetId = (() => {
       if (!overData) {
         return null;
       }
       if (overData.type === 'group') {
-        const candidateIds: string[] = Array.isArray(overData.groupAttributes)
-          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.id)
+        const candidateTokens: string[] = Array.isArray(overData.groupAttributes)
+          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.path)
           : [];
-        return candidateIds.find((candidateId: string) => destinationOrder.includes(candidateId)) ?? null;
+        return (
+          candidateTokens.find((token) => destinationOrder.includes(token)) ?? null
+        );
       }
       const attribute = overData.attribute as DisplayAttribute | undefined;
-      if (attribute && destinationOrder.includes(attribute.id)) {
-        return attribute.id;
+      if (attribute) {
+        const token = attribute.path;
+        if (destinationOrder.includes(token)) {
+          return token;
+        }
       }
       return null;
     })();
@@ -546,7 +559,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     }
 
     const nextOrder = [...destinationOrder];
-    nextOrder.splice(insertIndex, 0, ...groupIds);
+    nextOrder.splice(insertIndex, 0, ...groupPaths);
     setAttributeOrder(overInfo.sectionId, nextOrder);
 
     fullGroupAttributes.forEach((attribute) => movedKeysRef.current.add(attribute.key));

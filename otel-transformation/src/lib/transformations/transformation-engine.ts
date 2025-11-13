@@ -744,14 +744,15 @@ export class TransformationEngine {
 
       const attrById = new Map(section.attributes.map((attr) => [attr.id, attr]));
       const attrByKey = new Map(section.attributes.map((attr) => [attr.key, attr]));
+      const attrByPath = new Map(section.attributes.map((attr) => [attr.path, attr]));
       const reordered: DisplayAttribute[] = [];
       const seen = new Set<string>();
 
       customOrderKeys.forEach((token) => {
-        const idCandidate = token;
         const renamedKey = keyRenameMap.get(token) || token;
         const attr =
-          attrById.get(idCandidate) ||
+          attrById.get(token) ||
+          attrByPath.get(token) ||
           attrByKey.get(token) ||
           attrByKey.get(renamedKey);
         if (attr && !seen.has(attr.id)) {
