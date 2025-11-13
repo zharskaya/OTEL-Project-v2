@@ -1108,6 +1108,13 @@ const activeModifications = shouldTreatAsGroupRename
     isRowHoverActive || isHighlightedByQueue || isHighlightedByInput || isHighlightedByOutput;
   const rowHighlightClass = shouldHighlightRow ? 'bg-gray-300/60' : '';
   const modifiedBackgroundClass = hasAnyModification ? 'bg-gray-100' : '';
+  const canShowActionBar =
+    isHovered &&
+    !isRenaming &&
+    !isEditingAddStaticValue &&
+    !shouldShowMaskSelector &&
+    !isGroupDeletion &&
+    (hasUndoableTransformation || !isEffectivelyDeleted);
 
   const updateSelectionHandles = React.useCallback(() => {
     if (!isValueInteractive || !selection || !valueRef.current) {
@@ -1542,12 +1549,7 @@ const activeModifications = shouldTreatAsGroupRename
         {getModificationLabel()}
 
         {/* Action buttons - positioned absolutely on the right */}
-        {isHovered &&
-          !isRenaming &&
-          !isEditingAddStaticValue &&
-          !shouldShowMaskSelector &&
-          !isGroupDeletion &&
-          !isEffectivelyDeleted && (
+        {canShowActionBar && (
           <div
             className="absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2"
             onMouseEnter={() => setIsActionHovered(true)}
@@ -1555,26 +1557,24 @@ const activeModifications = shouldTreatAsGroupRename
             onPointerEnter={() => setIsActionHovered(true)}
             onPointerLeave={() => setIsActionHovered(false)}
           >
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => {
-                      if (!isEffectivelyDeleted) {
-                        handleStartRenaming();
-                      }
-                    }}
-                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
-                    aria-label="Rename key"
-                  >
-                    <Wrench className="h-4 w-4" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Rename key</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {!isEffectivelyDeleted && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleStartRenaming}
+                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
+                      aria-label="Rename key"
+                    >
+                      <Wrench className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Rename key</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {shouldShowSelectAction && (
               <TooltipProvider>
                 <Tooltip>

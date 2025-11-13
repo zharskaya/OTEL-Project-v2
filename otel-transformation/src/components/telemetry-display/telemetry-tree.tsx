@@ -421,38 +421,140 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         return;
       }
 
-      const referenceId = (() => {
+      const referenceAttribute = (() => {
         if (overInfo.entityType === 'group') {
           const overGroupAttributes = (overData?.groupAttributes as DisplayAttribute[]) ?? [];
-          const candidate = overGroupAttributes.find((attribute) => !groupIdSet.has(attribute.id));
-          return candidate?.id ?? null;
+          return overGroupAttributes.find((attribute) => !groupIdSet.has(attribute.id)) ?? null;
         }
         const attribute = overData?.attribute as DisplayAttribute | undefined;
         if (attribute && !groupIdSet.has(attribute.id)) {
-          return attribute.id;
+          return attribute;
         }
         return null;
       })();
 
-      if (referenceId && groupIdSet.has(referenceId)) {
+      const referenceAttributeId = referenceAttribute?.id ?? null;
+
+      if (referenceAttributeId && groupIdSet.has(referenceAttributeId)) {
         return;
       }
 
-      const filteredOrder = currentOrder.filter((id) => !groupIdSet.has(id));
-      let insertIndex = filteredOrder.length;
-      if (referenceId) {
-        const idx = filteredOrder.indexOf(referenceId);
-        if (idx !== -1) {
-          insertIndex = idx;
+      const sectionAttributes = [...section.attributes];
+      fullGroupAttributes.forEach((attribute) => {
+        if (!sectionAttributes.some((existing) => existing.id === attribute.id)) {
+          sectionAttributes.push(attribute);
+        }
+      });
+
+      const idToAttribute = new Map(sectionAttributes.map((attribute) => [attribute.id, attribute]));
+      const pathToId = new Map<string, string>();
+      sectionAttributes.forEach((attribute) => {
+        if (attribute.path) {
+          pathToId.set(attribute.path, attribute.id);
+        }
+      });
+      const keyToIds = new Map<string, string[]>();
+      sectionAttributes.forEach((attribute) => {
+        if (!attribute.key) {
+          return;
+        }
+        const existing = keyToIds.get(attribute.key);
+        if (existing) {
+          existing.push(attribute.id);
+        } else {
+          keyToIds.set(attribute.key, [attribute.id]);
+        }
+      });
+
+      const keyUsage = new Map<string, number>();
+      const resolveTokenToId = (token: string): string | null => {
+        if (idToAttribute.has(token)) {
+          return token;
+        }
+        const byPath = pathToId.get(token);
+        if (byPath) {
+          return byPath;
+        }
+        const idsForKey = keyToIds.get(token);
+        if (idsForKey && idsForKey.length > 0) {
+          const usage = keyUsage.get(token) ?? 0;
+          const boundedIndex = Math.min(usage, idsForKey.length - 1);
+          keyUsage.set(token, usage + 1);
+          return idsForKey[boundedIndex];
+        }
+        return null;
+      };
+
+      const tokenAssignments: Array<{ token: string; attributeId: string | null }> = [];
+      const tokensByAttributeId = new Map<string, string[]>();
+
+      currentOrder.forEach((token) => {
+        const attributeId = resolveTokenToId(token);
+        tokenAssignments.push({ token, attributeId });
+        if (!attributeId) {
+          return;
+        }
+        const existing = tokensByAttributeId.get(attributeId);
+        if (existing) {
+          existing.push(token);
+        } else {
+          tokensByAttributeId.set(attributeId, [token]);
+        }
+      });
+
+      const groupTokenIndexes: number[] = [];
+      const filteredTokens: string[] = [];
+      const filteredAttributeIds: Array<string | null> = [];
+      tokenAssignments.forEach(({ token, attributeId }, index) => {
+        if (attributeId && groupIdSet.has(attributeId)) {
+          groupTokenIndexes.push(index);
+          return;
+        }
+        filteredTokens.push(token);
+        filteredAttributeIds.push(attributeId);
+      });
+
+      let insertIndex = filteredTokens.length;
+      const firstGroupTokenIndex =
+        groupTokenIndexes.length > 0 ? Math.min(...groupTokenIndexes) : -1;
+
+      if (referenceAttributeId) {
+        const filteredIndex = filteredAttributeIds.findIndex(
+          (candidateId) => candidateId === referenceAttributeId
+        );
+        if (filteredIndex !== -1) {
+          const referenceOriginalIndex = tokenAssignments.findIndex(
+            ({ attributeId }) => attributeId === referenceAttributeId
+          );
+          if (
+            referenceOriginalIndex === -1 ||
+            firstGroupTokenIndex === -1 ||
+            referenceOriginalIndex < firstGroupTokenIndex
+          ) {
+            insertIndex = filteredIndex;
+          } else {
+            insertIndex = filteredIndex + 1;
+          }
         }
       }
 
-      const nextOrder = [...filteredOrder];
-      nextOrder.splice(insertIndex, 0, ...groupIds);
+      const tokensForInsertion = fullGroupAttributes.map((attribute) => {
+        const existingTokens = tokensByAttributeId.get(attribute.id);
+        if (existingTokens && existingTokens.length > 0) {
+          return existingTokens[0];
+        }
+        if (attribute.path) {
+          return attribute.path;
+        }
+        return attribute.id;
+      });
+
+      const nextOrder = [...filteredTokens];
+      nextOrder.splice(insertIndex, 0, ...tokensForInsertion);
 
       if (
         nextOrder.length === currentOrder.length &&
-        nextOrder.every((id, index) => currentOrder[index] === id)
+        nextOrder.every((token, index) => currentOrder[index] === token)
       ) {
         return;
       }
@@ -466,6 +568,8 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     if (!sourceSection || !destinationSection) {
       return;
     }
+
+    const groupIdSet = new Set(fullGroupAttributes.map((attribute) => attribute.id));
 
     const groupId = activeData?.groupId ?? activeInfo.entityId;
     const groupLabel = activeData?.groupLabel ?? groupId;
@@ -505,14 +609,63 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     const attributeOrder = useTransformationStore.getState().attributeOrder;
     const sourceOrder = attributeOrder.get(activeInfo.sectionId);
     if (sourceOrder) {
-      const groupIdSet = new Set(fullGroupAttributes.map((attribute) => attribute.id));
-      const groupPathSet = new Set(fullGroupAttributes.map((attribute) => attribute.path));
-      const shouldRemoveToken = (token: string) =>
-        groupIdSet.has(token) || groupPathSet.has(token);
+      const sourceAttributes = [...sourceSection.attributes];
+      fullGroupAttributes.forEach((attribute) => {
+        if (!sourceAttributes.some((existing) => existing.id === attribute.id)) {
+          sourceAttributes.push(attribute);
+        }
+      });
 
-      const filtered = sourceOrder.filter((token) => !shouldRemoveToken(token));
-      if (filtered.length !== sourceOrder.length) {
-        setAttributeOrder(activeInfo.sectionId, filtered);
+      const sourceIdToAttribute = new Map(sourceAttributes.map((attribute) => [attribute.id, attribute]));
+      const sourcePathToId = new Map<string, string>();
+      sourceAttributes.forEach((attribute) => {
+        if (attribute.path) {
+          sourcePathToId.set(attribute.path, attribute.id);
+        }
+      });
+      const sourceKeyToIds = new Map<string, string[]>();
+      sourceAttributes.forEach((attribute) => {
+        if (!attribute.key) {
+          return;
+        }
+        const bucket = sourceKeyToIds.get(attribute.key);
+        if (bucket) {
+          bucket.push(attribute.id);
+        } else {
+          sourceKeyToIds.set(attribute.key, [attribute.id]);
+        }
+      });
+
+      const sourceKeyUsage = new Map<string, number>();
+      const resolveSourceTokenToId = (token: string): string | null => {
+        if (sourceIdToAttribute.has(token)) {
+          return token;
+        }
+        const byPath = sourcePathToId.get(token);
+        if (byPath) {
+          return byPath;
+        }
+        const idsForKey = sourceKeyToIds.get(token);
+        if (idsForKey && idsForKey.length > 0) {
+          const usage = sourceKeyUsage.get(token) ?? 0;
+          const boundedIndex = Math.min(usage, idsForKey.length - 1);
+          sourceKeyUsage.set(token, usage + 1);
+          return idsForKey[boundedIndex];
+        }
+        return null;
+      };
+
+      const filteredSourceTokens: string[] = [];
+      sourceOrder.forEach((token) => {
+        const attributeId = resolveSourceTokenToId(token);
+        if (attributeId && groupIdSet.has(attributeId)) {
+          return;
+        }
+        filteredSourceTokens.push(token);
+      });
+
+      if (filteredSourceTokens.length !== sourceOrder.length) {
+        setAttributeOrder(activeInfo.sectionId, filteredSourceTokens);
       }
     }
 
@@ -520,46 +673,119 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       attributeOrder.get(overInfo.sectionId) ??
       destinationSection.attributes.map((attribute) => attribute.path);
 
-    const groupIdSet = new Set(fullGroupAttributes.map((attribute) => attribute.id));
-    const groupPathSet = new Set(fullGroupAttributes.map((attribute) => attribute.path));
-    const groupPaths = fullGroupAttributes.map((attribute) => attribute.path);
-    const shouldRemoveToken = (token: string) =>
-      groupIdSet.has(token) || groupPathSet.has(token);
+    const destinationAttributes = [...destinationSection.attributes];
+    fullGroupAttributes.forEach((attribute) => {
+      if (!destinationAttributes.some((existing) => existing.id === attribute.id)) {
+        destinationAttributes.push(attribute);
+      }
+    });
 
-    const destinationOrder = destinationOrderRaw.filter((token) => !shouldRemoveToken(token));
+    const destinationIdToAttribute = new Map(destinationAttributes.map((attribute) => [attribute.id, attribute]));
+    const destinationPathToId = new Map<string, string>();
+    destinationAttributes.forEach((attribute) => {
+      if (attribute.path) {
+        destinationPathToId.set(attribute.path, attribute.id);
+      }
+    });
+    const destinationKeyToIds = new Map<string, string[]>();
+    destinationAttributes.forEach((attribute) => {
+      if (!attribute.key) {
+        return;
+      }
+      const bucket = destinationKeyToIds.get(attribute.key);
+      if (bucket) {
+        bucket.push(attribute.id);
+      } else {
+        destinationKeyToIds.set(attribute.key, [attribute.id]);
+      }
+    });
 
-    const dropTargetId = (() => {
+    const destinationKeyUsage = new Map<string, number>();
+    const resolveDestinationTokenToId = (token: string): string | null => {
+      if (destinationIdToAttribute.has(token)) {
+        return token;
+      }
+      const byPath = destinationPathToId.get(token);
+      if (byPath) {
+        return byPath;
+      }
+      const idsForKey = destinationKeyToIds.get(token);
+      if (idsForKey && idsForKey.length > 0) {
+        const usage = destinationKeyUsage.get(token) ?? 0;
+        const boundedIndex = Math.min(usage, idsForKey.length - 1);
+        destinationKeyUsage.set(token, usage + 1);
+        return idsForKey[boundedIndex];
+      }
+      return null;
+    };
+
+    const destinationAssignments: Array<{ token: string; attributeId: string | null }> = [];
+    const destinationTokensByAttributeId = new Map<string, string[]>();
+
+    destinationOrderRaw.forEach((token) => {
+      const attributeId = resolveDestinationTokenToId(token);
+      destinationAssignments.push({ token, attributeId });
+      if (!attributeId) {
+        return;
+      }
+      const existing = destinationTokensByAttributeId.get(attributeId);
+      if (existing) {
+        existing.push(token);
+      } else {
+        destinationTokensByAttributeId.set(attributeId, [token]);
+      }
+    });
+
+    const destinationTokens: string[] = [];
+    const destinationAttributeIds: Array<string | null> = [];
+    destinationAssignments.forEach(({ token, attributeId }) => {
+      if (attributeId && groupIdSet.has(attributeId)) {
+        return;
+      }
+      destinationTokens.push(token);
+      destinationAttributeIds.push(attributeId);
+    });
+
+    const dropTargetAttribute = (() => {
       if (!overData) {
         return null;
       }
-      if (overData.type === 'group') {
-        const candidateTokens: string[] = Array.isArray(overData.groupAttributes)
-          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.path)
+      if (overInfo.entityType === 'group' || overData.type === 'group') {
+        const attributes: DisplayAttribute[] = Array.isArray(overData.groupAttributes)
+          ? overData.groupAttributes
           : [];
-        return (
-          candidateTokens.find((token) => destinationOrder.includes(token)) ?? null
-        );
+        return attributes.find((attribute) => !groupIdSet.has(attribute.id)) ?? null;
       }
       const attribute = overData.attribute as DisplayAttribute | undefined;
-      if (attribute) {
-        const token = attribute.path;
-        if (destinationOrder.includes(token)) {
-          return token;
-        }
+      if (attribute && !groupIdSet.has(attribute.id)) {
+        return attribute;
       }
       return null;
     })();
 
-    let insertIndex = destinationOrder.length;
-    if (dropTargetId) {
-      const idx = destinationOrder.indexOf(dropTargetId);
+    const dropTargetAttributeId = dropTargetAttribute?.id ?? null;
+
+    let insertIndex = destinationTokens.length;
+    if (dropTargetAttributeId) {
+      const idx = destinationAttributeIds.findIndex((candidateId) => candidateId === dropTargetAttributeId);
       if (idx !== -1) {
         insertIndex = idx;
       }
     }
 
-    const nextOrder = [...destinationOrder];
-    nextOrder.splice(insertIndex, 0, ...groupPaths);
+    const tokensForInsertion = fullGroupAttributes.map((attribute) => {
+      const existingTokens = destinationTokensByAttributeId.get(attribute.id);
+      if (existingTokens && existingTokens.length > 0) {
+        return existingTokens[0];
+      }
+      if (attribute.path) {
+        return attribute.path;
+      }
+      return attribute.id;
+    });
+
+    const nextOrder = [...destinationTokens];
+    nextOrder.splice(insertIndex, 0, ...tokensForInsertion);
     setAttributeOrder(overInfo.sectionId, nextOrder);
 
     fullGroupAttributes.forEach((attribute) => movedKeysRef.current.add(attribute.key));
