@@ -783,16 +783,17 @@ function AttributeGroupRow({
       const currentKey = renameParams ? renameParams.newKey : attribute.key;
 
       if (renameParams) {
+        const isManualRename = renameParams.generatedByGroup === false;
         updateTransformation(existingRename!.id, {
           params: {
             ...renameParams,
             newKey,
-            generatedByGroup: true,
+            generatedByGroup: isManualRename ? false : true,
           },
           sectionId: attribute.sectionId,
           status: TransformationStatus.ACTIVE,
           createdAt: new Date(),
-          pairedTransformationId: parentId,
+          pairedTransformationId: isManualRename ? undefined : parentId,
         });
       } else {
         addTransformation({

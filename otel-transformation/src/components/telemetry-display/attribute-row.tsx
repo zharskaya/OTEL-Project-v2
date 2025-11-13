@@ -215,7 +215,7 @@ export function AttributeRow({
   const deleteTransformation = transformations.find((transformation) => {
     if (transformation.type === TransformationType.DELETE) {
       const params = transformation.params as DeleteParams;
-      return params.attributeKey === attribute.key && params.attributePath === attribute.path;
+      return params.attributePath === attribute.path;
     }
     if (transformation.type === TransformationType.DELETE_GROUP) {
       const params = transformation.params as DeleteGroupParams;
