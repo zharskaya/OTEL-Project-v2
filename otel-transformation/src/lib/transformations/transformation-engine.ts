@@ -11,6 +11,7 @@ import {
   TransformationType,
   TransformationStatus,
   type MoveGroupParams,
+  type RenamePrefixParams,
 } from '@/types/transformation-types';
 import { TelemetryParser } from '@/lib/telemetry/telemetry-parser';
 
