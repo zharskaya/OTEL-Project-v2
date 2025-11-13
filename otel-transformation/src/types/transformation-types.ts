@@ -128,6 +128,7 @@ export interface RenameKeyParams {
   attributePath: string;
   oldKey: string;
   newKey: string;
+  generatedByGroup?: boolean;
 }
 
 export interface RenamePrefixParams {

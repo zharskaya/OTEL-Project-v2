@@ -119,7 +119,10 @@ export function TransformationQueuePanel({
         transformation.pairedTransformationId &&
         renamePrefixParentIds.has(transformation.pairedTransformationId)
       ) {
-        skipIds.add(transformation.id);
+        const params = transformation.params as RenameKeyParams;
+        if (params.generatedByGroup !== false) {
+          skipIds.add(transformation.id);
+        }
       }
     });
     return orderedTransformations.filter((transformation) => !skipIds.has(transformation.id));

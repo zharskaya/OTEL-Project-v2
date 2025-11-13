@@ -787,6 +787,7 @@ function AttributeGroupRow({
           params: {
             ...renameParams,
             newKey,
+            generatedByGroup: true,
           },
           sectionId: attribute.sectionId,
           status: TransformationStatus.ACTIVE,
@@ -807,6 +808,7 @@ function AttributeGroupRow({
             attributePath: attribute.path,
             oldKey: originalKey,
             newKey,
+            generatedByGroup: true,
           },
         });
       }

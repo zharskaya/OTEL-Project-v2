@@ -148,6 +148,7 @@ export function RenameKeyForm({
       attributePath,
       oldKey,
       newKey: trimmed,
+      generatedByGroup: false,
     };
 
     if (existingRename) {
