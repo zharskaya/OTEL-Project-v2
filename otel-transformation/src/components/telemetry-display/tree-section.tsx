@@ -603,8 +603,13 @@ function AttributeGroupRow({
   const [isRenaming, setIsRenaming] = React.useState(false);
   const transformations = useTransformations();
   const highlightedTransformationIds = useHighlightedTransformationIds();
-  const { addTransformation, updateTransformation, setAttributeOrder, removeTransformation } =
-    useTransformationActions();
+  const {
+    addTransformation,
+    updateTransformation,
+    setAttributeOrder,
+    removeTransformation,
+    reorderTransformations,
+  } = useTransformationActions();
   const attributeOrder = useAttributeOrder();
   const groupedAttributes = React.useMemo(() => collectAttributesFromGroup(node), [node]);
   const renamePrefixParams = renameTransformation
@@ -795,6 +800,9 @@ function AttributeGroupRow({
           createdAt: new Date(),
           pairedTransformationId: isManualRename ? undefined : parentId,
         });
+        if (isManualRename) {
+          reorderTransformations(existingRename!.id, Math.max(transformations.length - 1, 0));
+        }
       } else {
         addTransformation({
           id: `t-${Date.now()}-${attribute.id}-${index}`,
@@ -833,6 +841,8 @@ function AttributeGroupRow({
     sectionId,
     transformationByAttributePath,
     updateTransformation,
+    reorderTransformations,
+    transformations.length,
   ]);
 
   const handleUndoRenameGroup = (event?: React.MouseEvent<HTMLButtonElement>) => {

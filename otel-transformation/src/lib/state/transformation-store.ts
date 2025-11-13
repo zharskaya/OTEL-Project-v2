@@ -130,7 +130,11 @@ export const useTransformationStore = create<TransformationStore>(
         if (sourceIndex === -1) return state;
 
         const [removed] = transformations.splice(sourceIndex, 1);
-        transformations.splice(destinationIndex, 0, removed);
+        const boundedDestination = Math.min(
+          Math.max(destinationIndex, 0),
+          transformations.length
+        );
+        transformations.splice(boundedDestination, 0, removed);
 
         return { transformations: transformations.map((item, index) => ({ ...item, order: index })) };
       }),

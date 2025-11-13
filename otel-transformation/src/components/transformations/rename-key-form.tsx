@@ -39,7 +39,12 @@ export function RenameKeyForm({
 }: RenameKeyFormProps) {
   const [newKey, setNewKey] = useState(oldKey);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { addTransformation, updateTransformation, removeTransformation } = useTransformationActions();
+  const {
+    addTransformation,
+    updateTransformation,
+    removeTransformation,
+    reorderTransformations,
+  } = useTransformationActions();
   const transformations = useTransformations();
   const hasSavedRef = useRef(false);
 
@@ -158,6 +163,10 @@ export function RenameKeyForm({
         createdAt: new Date(),
         status: TransformationStatus.ACTIVE,
       });
+      reorderTransformations(
+        existingRename.id,
+        Math.max(transformations.length - 1, 0)
+      );
     } else {
       addTransformation({
         id: `t-${Date.now()}`,
