@@ -254,18 +254,25 @@ export function AttributeRow({
   );
 
   // Check if this attribute has a rename transformation
-  const renameTransformation = transformations.find(
-    (t) =>
-      t.type === TransformationType.RENAME_KEY &&
-      (t.params as any).oldKey === attribute.key &&
-      (t.params as any).attributePath === attribute.path
-  );
+  const renameTransformation = transformations.find((transformation) => {
+    if (transformation.type !== TransformationType.RENAME_KEY) {
+      return false;
+    }
+    const params = transformation.params as RenameKeyParams;
+    return params.attributePath === attribute.path;
+  });
 
   const renameParentTransformation =
     renameTransformation?.pairedTransformationId != null
       ? transformationById.get(renameTransformation.pairedTransformationId)
       : null;
   const isGroupRename = renameParentTransformation?.type === TransformationType.RENAME_PREFIX;
+const renameParams = renameTransformation
+  ? (renameTransformation.params as RenameKeyParams)
+  : undefined;
+const isManualGroupRenameOverride =
+  Boolean(renameParams) && renameParams?.generatedByGroup === false && isGroupRename;
+const shouldTreatAsGroupRename = isGroupRename && !isManualGroupRenameOverride;
 
   const getLastPathSegment = (value?: string | null): string => {
     if (!value) {
@@ -294,7 +301,7 @@ export function AttributeRow({
     }
   });
 
-  const activeModifications = isGroupRename
+const activeModifications = shouldTreatAsGroupRename
     ? baseActiveModifications.filter((modification) => modification.type !== 'rename-key')
     : baseActiveModifications;
 
@@ -358,10 +365,6 @@ export function AttributeRow({
   const addSubstringParams = isAddSubstring && addTransformationRecord
     ? (addTransformationRecord.params as AddSubstringParams)
     : undefined;
-  const renameParams = renameTransformation
-    ? (renameTransformation.params as RenameKeyParams)
-    : undefined;
-
   const highlightTokens = buildAttributeHighlightTokens(
     {
       id: attribute.id,
@@ -981,7 +984,7 @@ export function AttributeRow({
       );
     }
 
-    if (isRenamed && !isGroupRename) {
+    if (isRenamed && (!shouldTreatAsGroupRename || isManualGroupRenameOverride)) {
       const isRenameActive = isTransformationActiveById(renameTransformation?.id);
       const renameClassName = isRenameActive
         ? 'bg-indigo-600 text-white'
@@ -1359,9 +1362,11 @@ export function AttributeRow({
                       className="font-mono text-xs text-gray-900 leading-none cursor-pointer"
                       onClick={() => handleStartRenaming()}
                     >
-                      {isGroupRename ? (displayKey ?? getLastPathSegment(renameParams.newKey)) : renameParams.newKey}
+                      {shouldTreatAsGroupRename
+                        ? displayKey ?? getLastPathSegment(renameParams.newKey)
+                        : renameParams.newKey}
                     </span>
-                    {isGroupRename ? null : (
+                    {shouldTreatAsGroupRename && !isManualGroupRenameOverride ? null : (
                       <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
                         {renameParams.oldKey}
                       </span>
