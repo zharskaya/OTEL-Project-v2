@@ -20,7 +20,14 @@ import {
 import { SectionHeader } from '@/components/section-header/section-header';
 import { AddAttributeForm } from '@/components/transformations/add-attribute-form';
 import { SubstringAttributeForm } from '@/components/transformations/substring-attribute-form';
-import { useTransformations, useTransformationActions, useAttributeOrder, useHighlightedTransformationIds } from '@/lib/state/hooks';
+import {
+  useTransformations,
+  useTransformationActions,
+  useAttributeOrder,
+  useHighlightedTransformationIds,
+  useHoveredInputAttributeId,
+  useHoveredOutputAttributeId,
+} from '@/lib/state/hooks';
 import { useTransformationStore } from '@/lib/state/transformation-store';
 import {
   TransformationType,
@@ -646,6 +653,9 @@ function AttributeGroupRow({
   const [isRenaming, setIsRenaming] = React.useState(false);
   const transformations = useTransformations();
   const highlightedTransformationIds = useHighlightedTransformationIds();
+  const hoveredInputAttributeId = useHoveredInputAttributeId();
+  const hoveredOutputAttributeId = useHoveredOutputAttributeId();
+  const groupHighlightToken = React.useMemo(() => `group:${node.id}`, [node.id]);
   const {
     addTransformation,
     updateTransformation,
@@ -1206,7 +1216,10 @@ function AttributeGroupRow({
         ? 'bg-gray-100'
         : 'bg-gray-100'
       : '';
-  const hoverBackgroundClass = isHovered || isHighlighted ? 'bg-gray-300/60' : '';
+  const isExternallyHighlighted =
+    hoveredInputAttributeId === groupHighlightToken || hoveredOutputAttributeId === groupHighlightToken;
+  const hoverBackgroundClass =
+    isHovered || isHighlighted || isExternallyHighlighted ? 'bg-gray-300/60' : '';
   const rowBackgroundClass = [baseBackgroundClass, hoverBackgroundClass].filter(Boolean).join(' ');
   const canRenameGroup = allowGroupActions && !isGroupDeleted && !isGroupMoveSource;
   const labelColorClass =

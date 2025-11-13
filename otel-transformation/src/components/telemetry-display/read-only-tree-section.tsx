@@ -9,7 +9,13 @@ import {
   flattenGroupedAttributeTree,
   type GroupedGroupNode,
 } from './attribute-grouping';
-import { useTransformations } from '@/lib/state/hooks';
+import {
+  useTransformations,
+  useTransformationHighlightActions,
+  useHoveredInputAttributeId,
+  useHoveredOutputAttributeId,
+  useHighlightedTransformationIds,
+} from '@/lib/state/hooks';
 import {
   TransformationType,
   type DeleteParams,
@@ -178,6 +184,7 @@ function ReadOnlyAttributeGroupRow({
   deleteTransformationsByAttributePath,
   moveGroupParamsById,
 }: ReadOnlyAttributeGroupRowProps) {
+  const [isHovered, setIsHovered] = React.useState(false);
   const groupedAttributes = React.useMemo(() => collectAttributesFromGroup(node), [node]);
   const isRenamed = Boolean(renameTransformation);
   const isGroupDeleted =
@@ -202,21 +209,142 @@ function ReadOnlyAttributeGroupRow({
     }
     return false;
   }, [groupedAttributes, moveGroupParamsById, sectionId]);
+
+  const highlightedTransformationIds = useHighlightedTransformationIds();
+  const {
+    setHoveredTransformationIds,
+    clearHoveredTransformationIds,
+    setHoveredInputAttributeId,
+    setHoveredOutputAttributeId,
+    clearHoveredInputAttributeId,
+    clearHoveredOutputAttributeId,
+  } = useTransformationHighlightActions();
+  const hoveredInputAttributeId = useHoveredInputAttributeId();
+  const hoveredOutputAttributeId = useHoveredOutputAttributeId();
+  const groupHighlightToken = React.useMemo(() => `group:${node.id}`, [node.id]);
+
+  const relatedTransformationIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    groupedAttributes.forEach((attribute) => {
+      attribute.modifications.forEach((modification) => {
+        if (modification.transformationId) {
+          ids.add(modification.transformationId);
+        }
+      });
+      const deleteTransformation = deleteTransformationsByAttributePath.get(attribute.path);
+      if (deleteTransformation) {
+        ids.add(deleteTransformation.id);
+      }
+    });
+    if (renameTransformation) {
+      ids.add(renameTransformation.id);
+    }
+    return Array.from(ids);
+  }, [groupedAttributes, renameTransformation, deleteTransformationsByAttributePath]);
+
+  const relatedTransformationIdSet = React.useMemo(
+    () => new Set(relatedTransformationIds),
+    [relatedTransformationIds]
+  );
+
+  const isTransformationHighlighted = React.useMemo(
+    () =>
+      relatedTransformationIds.length > 0 &&
+      relatedTransformationIds.some((id) => highlightedTransformationIds.includes(id)),
+    [relatedTransformationIds, highlightedTransformationIds]
+  );
+  const isExternallyHighlighted =
+    hoveredInputAttributeId === groupHighlightToken || hoveredOutputAttributeId === groupHighlightToken;
+
   const baseBackgroundClass = (() => {
     if (isGroupMovedIn) return 'bg-green-200/30';
     if (isRenamed) return 'bg-blue-200/30';
     if (isGroupDeleted) return 'bg-red-200/30';
     return '';
   })();
-  const hoverBackgroundClass = 'hover:bg-gray-300/60';
+  const hoverBackgroundClass =
+    isHovered || isTransformationHighlighted || isExternallyHighlighted ? 'bg-gray-300/60' : '';
   const rowBackgroundClass = [baseBackgroundClass, hoverBackgroundClass].filter(Boolean).join(' ');
   const labelClassName = isGroupDeleted
     ? 'font-mono text-xs text-gray-400 leading-none line-through'
     : 'font-mono text-xs text-gray-900 leading-none';
+
+  const handlePointerEnter = React.useCallback(() => {
+    setIsHovered(true);
+    if (relatedTransformationIds.length > 0) {
+      setHoveredTransformationIds(relatedTransformationIds);
+    }
+    setHoveredInputAttributeId(groupHighlightToken);
+    setHoveredOutputAttributeId(groupHighlightToken);
+  }, [
+    relatedTransformationIds,
+    setHoveredTransformationIds,
+    setHoveredInputAttributeId,
+    setHoveredOutputAttributeId,
+    groupHighlightToken,
+  ]);
+
+  const handlePointerLeave = React.useCallback(() => {
+    setIsHovered(false);
+    if (
+      relatedTransformationIds.length > 0 &&
+      highlightedTransformationIds.length > 0 &&
+      highlightedTransformationIds.every((id) => relatedTransformationIdSet.has(id))
+    ) {
+      clearHoveredTransformationIds();
+    }
+    if (hoveredInputAttributeId === groupHighlightToken) {
+      clearHoveredInputAttributeId();
+    }
+    if (hoveredOutputAttributeId === groupHighlightToken) {
+      clearHoveredOutputAttributeId();
+    }
+  }, [
+    clearHoveredInputAttributeId,
+    clearHoveredOutputAttributeId,
+    clearHoveredTransformationIds,
+    groupHighlightToken,
+    highlightedTransformationIds,
+    hoveredInputAttributeId,
+    hoveredOutputAttributeId,
+    relatedTransformationIds,
+    relatedTransformationIdSet,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      if (
+        relatedTransformationIds.length > 0 &&
+        highlightedTransformationIds.length > 0 &&
+        highlightedTransformationIds.every((id) => relatedTransformationIdSet.has(id))
+      ) {
+        clearHoveredTransformationIds();
+      }
+      if (hoveredInputAttributeId === groupHighlightToken) {
+        clearHoveredInputAttributeId();
+      }
+      if (hoveredOutputAttributeId === groupHighlightToken) {
+        clearHoveredOutputAttributeId();
+      }
+    };
+  }, [
+    clearHoveredInputAttributeId,
+    clearHoveredOutputAttributeId,
+    clearHoveredTransformationIds,
+    groupHighlightToken,
+    highlightedTransformationIds,
+    hoveredInputAttributeId,
+    hoveredOutputAttributeId,
+    relatedTransformationIds,
+    relatedTransformationIdSet,
+  ]);
+
   return (
     <button
       type="button"
       onClick={onToggle}
+      onMouseEnter={handlePointerEnter}
+      onMouseLeave={handlePointerLeave}
       className={`flex w-full items-center py-1.5 mb-0.5 text-left focus:outline-none transition-colors ${rowBackgroundClass}`}
     >
       <div className="w-[260px] flex-shrink-0 flex items-start pr-4 leading-none">
