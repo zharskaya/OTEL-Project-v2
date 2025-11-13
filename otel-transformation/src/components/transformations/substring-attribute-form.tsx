@@ -40,6 +40,8 @@ export function SubstringAttributeForm({
       return;
     }
 
+    const preservedAttributeId = `substring-${sectionId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
     // Create ADD_SUBSTRING transformation
     addTransformation({
       id: `t-${Date.now()}`,
@@ -56,6 +58,7 @@ export function SubstringAttributeForm({
         substringStart,
         substringEnd,
         insertionPoint: sectionId,
+        preservedAttributeId,
       },
     });
 

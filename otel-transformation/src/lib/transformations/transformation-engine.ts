@@ -10,6 +10,7 @@ import {
   TransformationResult,
   TransformationType,
   TransformationStatus,
+  type AddStaticParams,
   type MoveGroupParams,
   type RenamePrefixParams,
 } from '@/types/transformation-types';
@@ -117,25 +118,55 @@ export class TransformationEngine {
           color: ModificationColor.GREEN,
         });
         
+        const valueToUse = (() => {
+          if (transformation.type === TransformationType.ADD_SUBSTRING && params.value === undefined) {
+            const sourceRaw = (params as AddSubstringParams).sourceAttributePath;
+            const [sectionPrefix] = sourceRaw?.split('.') ?? [];
+            const extractValue = () => {
+              if (sectionId.includes('resource')) {
+                const sourceAttr = data.resource.attributes.find((attribute) => attribute.key === params.sourceKey);
+                return sourceAttr?.value?.stringValue ?? '';
+              }
+              if (sectionId.includes('span-attributes')) {
+                const span = data.scopeSpans[0]?.spans[0];
+                const sourceAttr = span?.attributes.find((attribute) => attribute.key === params.sourceKey);
+                return sourceAttr?.value?.stringValue ?? '';
+              }
+              if (sectionId.includes('span-info')) {
+                const span = data.scopeSpans[0]?.spans[0];
+                const value = span ? (span as unknown as Record<string, unknown>)[params.sourceKey] : undefined;
+                return typeof value === 'string' ? value : value != null ? String(value) : '';
+              }
+              return '';
+            };
+            const rawValue = extractValue();
+            const start = (params as AddSubstringParams).substringStart;
+            const end = (params as AddSubstringParams).substringEnd;
+            const resolvedEnd = end === 'end' ? rawValue.length : end;
+            return rawValue.substring(start, resolvedEnd);
+          }
+          return params.value ?? '';
+        })();
+
         // Actually add the attribute to the data
         if (sectionId.includes('resource')) {
           data.resource.attributes.push({
             key,
-            value: { stringValue: params.value || '' }
+            value: { stringValue: valueToUse }
           });
         } else if (sectionId.includes('span-attributes')) {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
             span.attributes.push({
               key,
-              value: { stringValue: params.value || '' }
+              value: { stringValue: valueToUse }
             });
           }
         } else if (sectionId.includes('span-info')) {
           const span = data.scopeSpans[0]?.spans[0];
           if (span) {
             const spanRecord = span as unknown as Record<string, unknown>;
-            spanRecord[key] = params.value || '';
+            spanRecord[key] = valueToUse;
           }
         }
         break;
@@ -525,51 +556,92 @@ export class TransformationEngine {
     // Apply custom ordering from drag-and-drop in INPUT panel
     // attributeOrder contains KEYS, but we need to handle renamed keys
     
-    // Build a map of old key -> new key for renamed attributes
     const keyRenameMap = new Map<string, string>();
-    transformations
-      .filter(t => t.type === 'rename-key')
-      .forEach(t => {
-        const params = t.params as any;
+    const preservedAddIds = new Map<string, string>();
+    const preservedMoveIds = new Map<string, string>();
+
+    transformations.forEach((transformation) => {
+      if (transformation.type === TransformationType.RENAME_KEY) {
+        const params = transformation.params as any;
         keyRenameMap.set(params.oldKey, params.newKey);
-      });
-    
-    tree.sections.forEach(section => {
-      const customKeyOrder = attributeOrder.get(section.id);
-      if (customKeyOrder && customKeyOrder.length > 0) {
-        // Build key-based lookup
-        const keyToAttr = new Map(
-          section.attributes.map(attr => [attr.key, attr])
-        );
-        
-        // Reorder attributes based on custom key order
-        const reordered: DisplayAttribute[] = [];
-        const processedKeys = new Set<string>();
-        
-        // Add attributes in the custom key order
-        customKeyOrder.forEach(oldKey => {
-          // Check if this key was renamed
-          const currentKey = keyRenameMap.get(oldKey) || oldKey;
-          
-          const attr = keyToAttr.get(currentKey);
-          if (attr) {
-            reordered.push(attr);
-            processedKeys.add(currentKey);
-          }
-        });
-        
-        // Add any remaining attributes not in the custom order (newly added via transformations)
-        // These go at the top
-        const newAttributes: DisplayAttribute[] = [];
-        section.attributes.forEach(attr => {
-          if (!processedKeys.has(attr.key)) {
-            newAttributes.push(attr);
-          }
-        });
-        
-        // Put new attributes first, then ordered attributes
-        section.attributes = [...newAttributes, ...reordered];
       }
+      if (
+        transformation.type === TransformationType.ADD_STATIC ||
+        transformation.type === TransformationType.ADD_SUBSTRING
+      ) {
+        const params = transformation.params as AddStaticParams;
+        if (params.preservedAttributeId) {
+          preservedAddIds.set(transformation.id, params.preservedAttributeId);
+        }
+      }
+      if (transformation.type === TransformationType.MOVE_GROUP) {
+        const params = transformation.params as MoveGroupParams;
+        params.attributes.forEach((attribute) => {
+          if (attribute.id) {
+            preservedMoveIds.set(`${transformation.id}:${attribute.key}`, attribute.id);
+          }
+        });
+      }
+    });
+
+    tree.sections.forEach(section => {
+      // Apply preserved IDs from move/add transformations before reordering
+      section.attributes.forEach((attribute) => {
+        const modificationsList = attribute.modifications ?? [];
+        const addModification = modificationsList.find((modification) =>
+          preservedAddIds.has(modification.transformationId)
+        );
+        if (addModification) {
+          const preservedId = preservedAddIds.get(addModification.transformationId);
+          if (preservedId) {
+            attribute.id = preservedId;
+          }
+          return;
+        }
+
+        const moveModification = modificationsList.find((modification) =>
+          modification.type === 'move-group' &&
+          preservedMoveIds.has(`${modification.transformationId}:${attribute.key}`)
+        );
+        if (moveModification) {
+          const preservedId = preservedMoveIds.get(`${moveModification.transformationId}:${attribute.key}`);
+          if (preservedId) {
+            attribute.id = preservedId;
+          }
+        }
+      });
+
+      const customOrderKeys = attributeOrder.get(section.id);
+      if (!customOrderKeys || customOrderKeys.length === 0) {
+        return;
+      }
+
+      const attrById = new Map(section.attributes.map((attr) => [attr.id, attr]));
+      const attrByKey = new Map(section.attributes.map((attr) => [attr.key, attr]));
+      const reordered: DisplayAttribute[] = [];
+      const seen = new Set<string>();
+
+      customOrderKeys.forEach((token) => {
+        const idCandidate = token;
+        const renamedKey = keyRenameMap.get(token) || token;
+        const attr =
+          attrById.get(idCandidate) ||
+          attrByKey.get(token) ||
+          attrByKey.get(renamedKey);
+        if (attr && !seen.has(attr.id)) {
+          reordered.push(attr);
+          seen.add(attr.id);
+        }
+      });
+
+      section.attributes.forEach((attr) => {
+        if (!seen.has(attr.id)) {
+          reordered.push(attr);
+          seen.add(attr.id);
+        }
+      });
+
+      section.attributes = reordered;
     });
   }
 }

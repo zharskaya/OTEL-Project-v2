@@ -70,6 +70,8 @@ export function AddAttributeForm({
       return;
     }
 
+    const preservedAttributeId = `added-${sectionId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
     if (onSubmit) {
       onSubmit({ key, value });
     } else {
@@ -86,6 +88,7 @@ export function AddAttributeForm({
           key,
           value,
           insertionPoint: sectionId,
+          preservedAttributeId,
         },
       });
     }

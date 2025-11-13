@@ -70,6 +70,7 @@ export interface AddSubstringParams {
   substringStart: number;
   substringEnd: number | 'end';
   insertionPoint: string;
+  preservedAttributeId?: string;
 }
 
 export interface DeleteParams {

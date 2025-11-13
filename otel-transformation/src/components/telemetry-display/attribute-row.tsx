@@ -24,6 +24,7 @@ import {
   TransformationType,
   TransformationStatus,
   type AddStaticParams,
+  type AddSubstringParams,
   type DeleteParams,
   type DeleteGroupParams,
   type MoveGroupParams,
@@ -353,6 +354,9 @@ export function AttributeRow({
   const deleteParams = deleteTransformation?.params as DeleteParams | DeleteGroupParams | undefined;
   const addStaticParams = isAddStatic && addTransformationRecord
     ? (addTransformationRecord.params as AddStaticParams)
+    : undefined;
+  const addSubstringParams = isAddSubstring && addTransformationRecord
+    ? (addTransformationRecord.params as AddSubstringParams)
     : undefined;
   const renameParams = renameTransformation
     ? (renameTransformation.params as RenameKeyParams)
@@ -1058,6 +1062,14 @@ export function AttributeRow({
     return attribute.valueType === ValueType.STRING ? `"${maskedValue}"` : maskedValue;
   };
 
+  const substringRangeLabel = addSubstringParams
+    ? formatRangeLabel(addSubstringParams.substringStart, addSubstringParams.substringEnd)
+    : '';
+  const substringSourceKey = addSubstringParams?.sourceKey ?? '';
+  const substringFormula = addSubstringParams
+    ? `= SUBSTR (${substringSourceKey}, ${substringRangeLabel})`
+    : '';
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -1466,6 +1478,17 @@ export function AttributeRow({
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <span className={`font-mono text-xs ${getTextClass()} leading-none`}>
                 {attribute.value}
+              </span>
+            </span>
+          ) : isAddSubstring && addSubstringParams ? (
+            <span ref={valueRef} className="flex flex-col gap-1 leading-none">
+              <SyntaxHighlighter
+                value={attribute.value}
+                valueType={attribute.valueType}
+                className={`font-mono text-xs ${getTextClass()} leading-none`}
+              />
+              <span className="font-mono text-[10px] text-gray-500 leading-tight">
+                {substringFormula}
               </span>
             </span>
           ) : activeModificationTypes.has('add-substring') ? (
