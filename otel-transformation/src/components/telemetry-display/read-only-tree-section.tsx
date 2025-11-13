@@ -18,6 +18,7 @@ import {
 } from '@/lib/state/hooks';
 import {
   TransformationType,
+  TransformationStatus,
   type DeleteParams,
   type DeleteGroupParams,
   type MoveGroupParams,
@@ -47,7 +48,9 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
   const renamePrefixTransformations = React.useMemo(
     () =>
       transformations.filter(
-        (transformation) => transformation.type === TransformationType.RENAME_PREFIX
+        (transformation) =>
+          transformation.type === TransformationType.RENAME_PREFIX &&
+          (transformation.status ?? TransformationStatus.ACTIVE) === TransformationStatus.ACTIVE
       ),
     [transformations]
   );
@@ -55,6 +58,9 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
   const moveGroupByTransformationId = React.useMemo(() => {
     const map = new Map<string, MoveGroupParams>();
     transformations.forEach((transformation) => {
+      if ((transformation.status ?? TransformationStatus.ACTIVE) !== TransformationStatus.ACTIVE) {
+        return;
+      }
       if (transformation.type !== TransformationType.MOVE_GROUP) {
         return;
       }
@@ -66,6 +72,9 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
   const deleteTransformationsByAttributePath = React.useMemo(() => {
     const map = new Map<string, Transformation>();
     transformations.forEach((transformation) => {
+      if ((transformation.status ?? TransformationStatus.ACTIVE) !== TransformationStatus.ACTIVE) {
+        return;
+      }
       if (transformation.type === TransformationType.DELETE) {
         const params = transformation.params as DeleteParams;
         map.set(params.attributePath, transformation);

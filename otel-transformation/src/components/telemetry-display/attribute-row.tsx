@@ -441,6 +441,8 @@ const activeModifications = shouldTreatAsGroupRename
 
   const isMovedIn = Boolean(addStaticParams?.movedFromSectionId) || isGroupMoveDestination;
   const isEffectivelyDeleted = isDeleted || isGroupMoveSource;
+  const isDeletedWithParent = isGroupDeletion && !isGroupMoveSource;
+  const isVisuallyDeleted = isEffectivelyDeleted || isDeletedWithParent;
 
   const cancelHoverHide = () => {
     if (hoverHideTimeoutRef.current) {
@@ -476,7 +478,7 @@ const activeModifications = shouldTreatAsGroupRename
   };
 
   React.useEffect(() => {
-    if (!selection || isEffectivelyDeleted || isMasked) {
+    if (!selection || isVisuallyDeleted || isMasked) {
       return;
     }
 
@@ -492,7 +494,7 @@ const activeModifications = shouldTreatAsGroupRename
 
     setHoverSelection(null);
     cancelHoverHide();
-  }, [selection, isEffectivelyDeleted, isMasked, isRenamed]);
+  }, [selection, isVisuallyDeleted, isMasked, isRenamed]);
 
   React.useEffect(() => () => cancelHoverHide(), []);
 
@@ -720,7 +722,7 @@ const activeModifications = shouldTreatAsGroupRename
   };
 
   const handleValueMouseEnter = () => {
-    if (isEffectivelyDeleted) {
+    if (isVisuallyDeleted) {
       setIsValueHovered(true);
       return;
     }
@@ -741,7 +743,7 @@ const activeModifications = shouldTreatAsGroupRename
   };
 
   const handleValueKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (isEffectivelyDeleted) {
+    if (isVisuallyDeleted) {
       return;
     }
 
@@ -1035,7 +1037,7 @@ const activeModifications = shouldTreatAsGroupRename
   const getRowBackgroundClass = () => '';
 
   const getTextClass = () => {
-    if (isEffectivelyDeleted) return 'line-through text-gray-400';
+    if (isVisuallyDeleted) return 'line-through text-gray-400';
     return 'text-gray-900';
   };
 
@@ -1081,7 +1083,7 @@ const activeModifications = shouldTreatAsGroupRename
   };
 
   const activeSelection = selection ?? hoverSelection;
-  const isValueInteractive = !isEffectivelyDeleted;
+  const isValueInteractive = !isVisuallyDeleted;
   const hasActiveSelection = !!activeSelection;
   const shouldShowMaskSelector = hasActiveSelection && isValueInteractive;
   const isHighlightedByQueue = useMemo(
@@ -1096,9 +1098,9 @@ const activeModifications = shouldTreatAsGroupRename
   const isRowHoverActive =
     isHovered || shouldShowMaskSelector || isHighlightedByQueue || isEditingAddStaticValue;
   const shouldShowSelectAction =
-    !isEffectivelyDeleted &&
+    !isVisuallyDeleted &&
     (!hasAnyModification || isRenamed || isMasked || isAddSubstring || isMovedIn);
-  const shouldShowEditAddedAction = !isEffectivelyDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
+  const shouldShowEditAddedAction = !isVisuallyDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
   const valueTooltipMessage = isAddStatic && !isMovedIn ? 'Click to edit static value' : 'Select to transform';
@@ -1114,7 +1116,7 @@ const activeModifications = shouldTreatAsGroupRename
     !isEditingAddStaticValue &&
     !shouldShowMaskSelector &&
     !isGroupDeletion &&
-    (hasUndoableTransformation || !isEffectivelyDeleted);
+    (hasUndoableTransformation || !isVisuallyDeleted);
 
   const updateSelectionHandles = React.useCallback(() => {
     if (!isValueInteractive || !selection || !valueRef.current) {
@@ -1225,7 +1227,7 @@ const activeModifications = shouldTreatAsGroupRename
         onBlurCapture={handleRowPointerLeave}
       >
         {/* Drag handle - positioned absolutely on the left, vertically centered, shown on hover */}
-        {isHovered && !isEffectivelyDeleted && isDraggable && attribute.depth === 0 ? (
+        {isHovered && !isVisuallyDeleted && isDraggable && attribute.depth === 0 ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1366,23 +1368,36 @@ const activeModifications = shouldTreatAsGroupRename
                 <TooltipTrigger asChild>
                   <span className="flex flex-col gap-1 leading-none">
                     <span
-                      className="font-mono text-xs text-gray-900 leading-none cursor-pointer"
-                      onClick={() => handleStartRenaming()}
+                      className={`font-mono text-xs leading-none ${
+                        isVisuallyDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'
+                      }`}
+                      onClick={() => {
+                        if (isVisuallyDeleted) {
+                          return;
+                        }
+                        handleStartRenaming();
+                      }}
                     >
                       {shouldTreatAsGroupRename
                         ? displayKey ?? getLastPathSegment(renameParams.newKey)
                         : renameParams.newKey}
                     </span>
                     {shouldTreatAsGroupRename && !isManualGroupRenameOverride ? null : (
-                      <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+                      <span
+                        className={`font-mono text-[10px] leading-none ${
+                          isVisuallyDeleted ? 'text-gray-400 line-through' : 'text-gray-400 line-through'
+                        }`}
+                      >
                         {renameParams.oldKey}
                       </span>
                     )}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Click to rename</p>
-                </TooltipContent>
+                {isHovered && !isVisuallyDeleted ? (
+                  <TooltipContent>
+                    <p>Click to rename</p>
+                  </TooltipContent>
+                ) : null}
               </Tooltip>
             </TooltipProvider>
           ) : (
@@ -1391,10 +1406,10 @@ const activeModifications = shouldTreatAsGroupRename
                       <TooltipTrigger asChild>
                   <span
                     className={`font-mono text-xs leading-none ${
-                      isEffectivelyDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'
+                      isVisuallyDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'
                     }`}
                     onClick={() => {
-                      if (isEffectivelyDeleted) {
+                      if (isVisuallyDeleted) {
                         return;
                       }
                       handleStartRenaming();
@@ -1403,7 +1418,7 @@ const activeModifications = shouldTreatAsGroupRename
                     {displayKey ?? attribute.key}
                   </span>
                       </TooltipTrigger>
-                {isHovered && !isEffectivelyDeleted && (
+                {isHovered && !isVisuallyDeleted && (
                   <TooltipContent>
                     <p>Click to rename</p>
                   </TooltipContent>
@@ -1479,32 +1494,52 @@ const activeModifications = shouldTreatAsGroupRename
                   >
           {isMasked ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
-              <span className="font-mono text-xs text-emerald-600 leading-none">
+              <span
+                className={`font-mono text-xs leading-none ${
+                  isVisuallyDeleted ? 'text-gray-400 line-through' : 'text-emerald-600'
+                }`}
+              >
                 {getMaskedValue()}
               </span>
-              <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
+              <span
+                className={`font-mono text-[10px] leading-none ${
+                  isVisuallyDeleted ? 'text-gray-400 line-through' : 'text-gray-400 line-through'
+                }`}
+              >
                 {attribute.value}
               </span>
               {isAddSubstring && addSubstringParams && (
-                <span className="font-mono text-[10px] text-gray-500 leading-tight">
+                <span
+                  className={`font-mono text-[10px] leading-tight select-none ${
+                    isVisuallyDeleted ? 'text-gray-400 line-through' : 'text-gray-500'
+                  }`}
+                  data-substring-formula="true"
+                >
                   {substringFormula}
                 </span>
               )}
             </span>
-          ) : isEffectivelyDeleted ? (
+          ) : isVisuallyDeleted ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <span className={`font-mono text-xs ${getTextClass()} leading-none`}>
                 {attribute.value}
               </span>
             </span>
           ) : isAddSubstring && addSubstringParams ? (
-            <span ref={valueRef} className="flex flex-col gap-1 leading-none">
-              <SyntaxHighlighter
-                value={attribute.value}
-                valueType={attribute.valueType}
-                className={`font-mono text-xs ${getTextClass()} leading-none`}
-              />
-              <span className="font-mono text-[10px] text-gray-500 leading-tight">
+            <span className="flex flex-col gap-1 leading-none">
+              <span ref={valueRef} className="leading-none">
+                <SyntaxHighlighter
+                  value={attribute.value}
+                  valueType={attribute.valueType}
+                  className={`font-mono text-xs ${getTextClass()} leading-none`}
+                />
+              </span>
+              <span
+                className={`font-mono text-[10px] leading-tight select-none ${
+                  isVisuallyDeleted ? 'text-gray-400 line-through' : 'text-gray-500'
+                }`}
+                data-substring-formula="true"
+              >
                 {substringFormula}
               </span>
             </span>
@@ -1557,7 +1592,7 @@ const activeModifications = shouldTreatAsGroupRename
             onPointerEnter={() => setIsActionHovered(true)}
             onPointerLeave={() => setIsActionHovered(false)}
           >
-            {!isEffectivelyDeleted && (
+            {!isVisuallyDeleted && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>

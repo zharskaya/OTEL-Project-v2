@@ -10,11 +10,11 @@ import {
   useHoveredOutputAttributeId,
   useTransformations,
 } from '@/lib/state/hooks';
-import type {
-  Transformation,
+import {
   TransformationStatus,
-  RenameKeyParams,
-  MoveGroupParams,
+  type Transformation,
+  type RenameKeyParams,
+  type MoveGroupParams,
 } from '@/types/transformation-types';
 import { buildAttributeHighlightTokens, createSectionKeyToken } from './highlight-utils';
 
@@ -57,7 +57,10 @@ export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttribut
   const moveGroupParamsById = React.useMemo(() => {
     const map = new Map<string, MoveGroupParams>();
     transformations.forEach((transformation) => {
-      if (transformation.type !== 'move-group') {
+      if (
+        transformation.type !== 'move-group' ||
+        (transformation.status ?? TransformationStatus.ACTIVE) !== TransformationStatus.ACTIVE
+      ) {
         return;
       }
       map.set(transformation.id, transformation.params as MoveGroupParams);
