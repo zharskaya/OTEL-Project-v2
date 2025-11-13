@@ -1551,18 +1551,44 @@ const activeModifications = shouldTreatAsGroupRename
                 className={`font-mono text-xs ${getTextClass()} leading-none`}
               />
             </span>
+          ) : attribute.valueType === ValueType.STRING && !isValueInteractive ? (
+            <span className="flex flex-col gap-1 leading-none" data-value-wrapper="true">
+              <span className="leading-none flex items-baseline gap-0.5">
+                {attribute.value.startsWith('"') && attribute.value.endsWith('"') ? (
+                  <span className="font-mono text-xs leading-none select-none text-gray-500" aria-hidden="true">
+                    "
+                  </span>
+                ) : null}
+                <span ref={valueRef} data-selection-root="true" className="leading-none">
+                  <SyntaxHighlighter
+                    value={
+                      attribute.value.startsWith('"') && attribute.value.endsWith('"')
+                        ? attribute.value.slice(1, -1)
+                        : attribute.value
+                    }
+                    valueType={attribute.valueType}
+                    showQuotes={false}
+                    className={`font-mono text-xs ${getTextClass()} leading-none`}
+                  />
+                </span>
+                {attribute.value.startsWith('"') && attribute.value.endsWith('"') ? (
+                  <span className="font-mono text-xs leading-none select-none text-gray-500" aria-hidden="true">
+                    "
+                  </span>
+                ) : null}
+              </span>
+            </span>
           ) : (
-            <span 
-              ref={valueRef} 
-              className="flex flex-col gap-1 leading-none"
-            >
-              <SyntaxHighlighter
-                value={attribute.value}
-                valueType={attribute.valueType}
-                className={`font-mono text-xs ${getTextClass()} leading-none`}
-              />
+            <span className="flex flex-col gap-1 leading-none">
+              <span ref={valueRef} className="leading-none">
+                <SyntaxHighlighter
+                  value={attribute.value}
+                  valueType={attribute.valueType}
+                  className={`font-mono text-xs ${getTextClass()} leading-none`}
+                />
+              </span>
               {movedFromSectionLabel && !isGroupMoveDestination && !isGroupMoveSource && (
-                <span className="font-mono text-[10px] text-gray-500 leading-none">
+                <span className="font-mono text-[10px] text-gray-500 leading-none select-none" data-move-context="true">
                   moved from {movedFromSectionLabel}
                 </span>
               )}

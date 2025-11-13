@@ -8,13 +8,19 @@ interface SyntaxHighlighterProps {
   value: string;
   valueType?: ValueType;
   className?: string;
+  showQuotes?: boolean;
 }
 
-export function SyntaxHighlighter({ value, valueType, className = '' }: SyntaxHighlighterProps) {
+export function SyntaxHighlighter({
+  value,
+  valueType,
+  className = '',
+  showQuotes = true,
+}: SyntaxHighlighterProps) {
   const tokens = tokenizeValue(value);
   
   // Only add quotes if the value type is explicitly STRING
-  const shouldAddQuotes = valueType === ValueType.STRING;
+  const shouldAddQuotes = showQuotes && valueType === ValueType.STRING;
 
   return (
     <span className={className}>

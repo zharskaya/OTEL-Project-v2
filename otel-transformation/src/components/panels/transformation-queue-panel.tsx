@@ -62,7 +62,7 @@ import {
 } from 'lucide-react';
 import { RawOTTLForm } from '@/components/transformations/raw-ottl-form';
 import type { TelemetrySection } from '@/types/telemetry-types';
-import { createSectionKeyToken } from '@/components/telemetry-display/highlight-utils';
+import { buildAttributeHighlightTokens } from '@/components/telemetry-display/highlight-utils';
 
 interface TransformationQueuePanelProps {
   sections: TelemetrySection[];
@@ -578,81 +578,180 @@ function QueueItem({
   const { inputToken, outputToken } = useMemo(() => {
     const inputCandidates: string[] = [];
     const outputCandidates: string[] = [];
-    const pushUnique = (list: string[], value: string | null | undefined) => {
+
+    const pushToken = (list: string[], value: string | null | undefined, prepend = false) => {
       if (!value) {
         return;
       }
-      if (!list.includes(value)) {
+      const index = list.indexOf(value);
+      if (index !== -1) {
+        if (prepend && index > 0) {
+          list.splice(index, 1);
+          list.unshift(value);
+        }
+        return;
+      }
+      if (prepend) {
+        list.unshift(value);
+      } else {
         list.push(value);
+      }
+    };
+
+    const addAttributeTokens = (
+      list: string[],
+      sectionId: string | undefined,
+      { key, path, id, additionalKeys }: { key?: string | null; path?: string | null; id?: string | null; additionalKeys?: Array<string | null | undefined> },
+      prepend = false
+    ) => {
+      if (!sectionId) {
+        return;
+      }
+      const normalizedPath = path ?? undefined;
+      const normalizedKey = key ?? (normalizedPath ? normalizedPath.split('/').pop() ?? '' : '');
+      const normalizedId =
+        id ??
+        normalizedPath ??
+        (normalizedKey ? `${sectionId}:${normalizedKey}` : null);
+
+      if (!normalizedId) {
+        return;
+      }
+
+      const tokens = buildAttributeHighlightTokens(
+        {
+          id: normalizedId,
+          path: normalizedPath ?? normalizedId,
+          sectionId,
+          key: normalizedKey ?? '',
+        },
+        additionalKeys
+      );
+
+      const orderedTokens = prepend ? Array.from(tokens).reverse() : Array.from(tokens);
+      orderedTokens.forEach((token) => pushToken(list, token, prepend));
+    };
+
+    const addGroupTokens = (list: string[], sectionId: string, groupIdentifier: string | null | undefined, prepend = false) => {
+      if (!sectionId || !groupIdentifier) {
+        return;
+      }
+      let prefix = groupIdentifier;
+      if (prefix.includes('::')) {
+        const [, suffix] = prefix.split('::');
+        prefix = suffix ?? prefix;
+      }
+      if (!prefix) {
+        return;
+      }
+      const segments = prefix.split(/\/+/).filter((segment) => segment.length > 0);
+      const tokens: string[] = [];
+      if (segments.length === 0) {
+        tokens.push(`group:${sectionId}::${prefix}`);
+      } else {
+        let current = '';
+        segments.forEach((segment) => {
+          current = current ? `${current}/${segment}` : segment;
+          tokens.push(`group:${sectionId}::${current}`);
+        });
+      }
+      if (prepend) {
+        tokens.forEach((token, index) => {
+          pushToken(list, token, index === tokens.length - 1);
+        });
+      } else {
+        tokens.forEach((token) => pushToken(list, token, false));
       }
     };
 
     switch (transformation.type) {
       case TransformationType.ADD_STATIC: {
         const params = transformation.params as AddStaticParams;
-        const key = params.key;
-        if (key) {
-          pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, key));
-        }
-        pushUnique(inputCandidates, params.movedFromPath);
-        if (params.movedFromSectionId && key) {
-          pushUnique(inputCandidates, createSectionKeyToken(params.movedFromSectionId, key));
+        addAttributeTokens(outputCandidates, transformation.sectionId, {
+          key: params.key,
+          id: params.preservedAttributeId ?? null,
+        });
+        if (params.movedFromSectionId || params.movedFromPath) {
+          addAttributeTokens(
+            inputCandidates,
+            params.movedFromSectionId ?? transformation.sectionId,
+            {
+              key: params.key,
+              path: params.movedFromPath ?? undefined,
+            }
+          );
         }
         break;
       }
       case TransformationType.ADD_SUBSTRING: {
         const params = transformation.params as AddSubstringParams;
-        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.newKey));
-        pushUnique(inputCandidates, params.sourceAttributePath);
-        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.sourceKey));
+        addAttributeTokens(outputCandidates, transformation.sectionId, {
+          key: params.newKey,
+        });
+        addAttributeTokens(inputCandidates, transformation.sectionId, {
+          key: params.sourceKey,
+          path: params.sourceAttributePath,
+        });
         break;
       }
       case TransformationType.DELETE: {
         const params = transformation.params as DeleteParams;
-        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
-        pushUnique(inputCandidates, params.attributePath);
-        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
-        pushUnique(outputCandidates, params.attributePath);
-        if (params.movedToSectionId && params.attributeKey) {
-          pushUnique(outputCandidates, createSectionKeyToken(params.movedToSectionId, params.attributeKey));
-        }
-        pushUnique(outputCandidates, params.movedToPath);
+        addAttributeTokens(inputCandidates, transformation.sectionId, {
+          key: params.attributeKey,
+          path: params.attributePath,
+        });
         break;
       }
       case TransformationType.DELETE_GROUP: {
         const params = transformation.params as DeleteGroupParams;
-        const firstAttribute = params.attributes[0];
-        if (firstAttribute) {
-          pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, firstAttribute.key));
-          pushUnique(inputCandidates, firstAttribute.path);
-          pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, firstAttribute.key));
-          pushUnique(outputCandidates, firstAttribute.path);
-        }
+        addGroupTokens(inputCandidates, transformation.sectionId, params.groupId ?? null, true);
+        params.attributes.forEach(({ key, path }) => {
+          addAttributeTokens(inputCandidates, transformation.sectionId, {
+            key,
+            path,
+          });
+        });
         break;
       }
       case TransformationType.MASK: {
         const params = transformation.params as MaskParams;
-        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
-        pushUnique(outputCandidates, params.attributePath);
-        pushUnique(inputCandidates, params.attributePath);
-        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.attributeKey));
+        addAttributeTokens(inputCandidates, transformation.sectionId, {
+          key: params.attributeKey,
+          path: params.attributePath,
+        });
+        addAttributeTokens(outputCandidates, transformation.sectionId, {
+          key: params.attributeKey,
+          path: params.attributePath,
+        });
         break;
       }
       case TransformationType.RENAME_KEY: {
         const params = transformation.params as RenameKeyParams;
-        pushUnique(outputCandidates, createSectionKeyToken(transformation.sectionId, params.newKey));
-        pushUnique(outputCandidates, params.attributePath);
-        pushUnique(inputCandidates, params.attributePath);
-        pushUnique(inputCandidates, createSectionKeyToken(transformation.sectionId, params.oldKey));
+        addAttributeTokens(inputCandidates, transformation.sectionId, {
+          key: params.oldKey,
+          path: params.attributePath,
+        });
+        addAttributeTokens(
+          outputCandidates,
+          transformation.sectionId,
+          {
+            key: params.newKey,
+            path: params.attributePath,
+          }
+        );
         break;
       }
       case TransformationType.RENAME_PREFIX: {
         const params = transformation.params as RenamePrefixParams;
-        pushUnique(inputCandidates, params.oldPrefix);
-        pushUnique(outputCandidates, params.newPrefix);
+        addGroupTokens(inputCandidates, transformation.sectionId, params.oldPrefix, true);
+        addGroupTokens(outputCandidates, transformation.sectionId, params.newPrefix, true);
         params.attributePaths.forEach((path) => {
-          pushUnique(inputCandidates, path);
-          pushUnique(outputCandidates, path);
+          addAttributeTokens(inputCandidates, transformation.sectionId, {
+            path,
+          });
+          addAttributeTokens(outputCandidates, transformation.sectionId, {
+            path,
+          });
         });
         break;
       }
