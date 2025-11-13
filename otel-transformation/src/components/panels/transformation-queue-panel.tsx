@@ -47,6 +47,7 @@ import {
   type AddSubstringParams,
   type DeleteParams,
   type DeleteGroupParams,
+  type MoveGroupParams,
   type MaskParams,
   type RenameKeyParams,
   type RenamePrefixParams,
@@ -1005,21 +1006,38 @@ function getRowDetails(transformation: Transformation): RowDetails {
     case TransformationType.DELETE_GROUP: {
       const params = transformation.params as DeleteGroupParams;
       const sectionLabel = formatSectionTitle(transformation.sectionId);
-      const groupLabel = params.groupLabel || params.groupId;
+      const groupLabel = params.groupLabel && params.groupLabel.trim().length > 0 ? params.groupLabel : params.groupId;
+      const nestedCount = params.attributes.length;
       const textClassName =
         transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400';
       return {
         action: 'DELETE',
-        section: undefined,
+        section: sectionLabel,
         description: (
-          <span className="flex flex-col leading-tight">
-            <span className={`text-xs font-semibold uppercase tracking-wide ${textClassName}`}>
-              {sectionLabel}
-            </span>
-            <span className={`font-mono text-xs ${textClassName}`}>{groupLabel}</span>
+          <span className={`font-mono text-xs ${textClassName}`}>
+            {`${groupLabel} (${formatNestedKeyCount(nestedCount)})`}
           </span>
         ),
         actionClassName: getActionClassName('DELETE'),
+      };
+    }
+    case TransformationType.MOVE_GROUP: {
+      const params = transformation.params as MoveGroupParams;
+      const textClassName =
+        transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400';
+      const fromLabel = formatSectionTitle(params.fromSectionId);
+      const toLabel = formatSectionTitle(params.toSectionId);
+      const groupLabel = params.groupLabel && params.groupLabel.trim().length > 0 ? params.groupLabel : params.groupId;
+      const nestedCount = params.attributes.length;
+      return {
+        action: 'MOVE',
+        section: `${fromLabel} → ${toLabel}`,
+        description: (
+          <span className={`font-mono text-xs ${textClassName}`}>
+            {`${groupLabel} (${formatNestedKeyCount(nestedCount)})`}
+          </span>
+        ),
+        actionClassName: getActionClassName('MOVE'),
       };
     }
     case TransformationType.MASK: {
@@ -1060,31 +1078,16 @@ function getRowDetails(transformation: Transformation): RowDetails {
     }
     case TransformationType.RENAME_PREFIX: {
       const params = transformation.params as RenamePrefixParams;
+      const textClassName =
+        transformation.status === TransformationStatus.ACTIVE ? 'text-gray-900' : 'text-gray-400';
+      const nestedCount = params.attributePaths.length;
       return {
         action: 'RENAME',
         section: formatSectionTitle(transformation.sectionId),
         description: (
-          <>
-            <span
-              className={
-                transformation.status === TransformationStatus.ACTIVE
-                  ? 'text-gray-900'
-                  : 'text-gray-400'
-              }
-            >
-              {params.oldPrefix}
-            </span>
-            {' → '}
-            <span
-              className={
-                transformation.status === TransformationStatus.ACTIVE
-                  ? 'text-gray-900'
-                  : 'text-gray-400'
-              }
-            >
-              {params.newPrefix}
-            </span>
-          </>
+          <span className={`font-mono text-xs ${textClassName}`}>
+            {`${params.oldPrefix} → ${params.newPrefix} (${formatNestedKeyCount(nestedCount)})`}
+          </span>
         ),
         actionClassName: getActionClassName('RENAME'),
       };
@@ -1182,6 +1185,14 @@ function formatRangeLabel(start: number, end: number | 'end'): string {
 
   const endLabel = end === 'end' ? 'end' : end.toString();
   return `[${start}..${endLabel}]`;
+}
+
+function formatNestedKeyCount(count: number): string {
+  if (!Number.isFinite(count) || count < 0) {
+    return '0 keys';
+  }
+  const safeCount = Math.trunc(count);
+  return safeCount === 1 ? '1 key' : `${safeCount} keys`;
 }
 
 

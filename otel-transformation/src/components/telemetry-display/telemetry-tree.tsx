@@ -24,6 +24,7 @@ import {
   TransformationStatus,
   type DeleteParams,
   type DeleteGroupParams,
+  type MoveGroupParams,
 } from '@/types/transformation-types';
 
 interface TelemetryTreeProps {
@@ -55,6 +56,8 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     setIsHydrated(true);
   }, []);
 
+  const GROUP_SORTABLE_PREFIX = 'group::';
+
   if (!isHydrated) {
     return (
       <div className="flex h-full flex-col">
@@ -70,11 +73,27 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     );
   }
 
-  // Extract section ID and attribute ID from a composite ID (format: "sectionId:attributeId")
-  const parseId = (id: string): { sectionId: string; attributeId: string } | null => {
-    const parts = id.split(':');
-    if (parts.length !== 2) return null;
-    return { sectionId: parts[0], attributeId: parts[1] };
+  const parseId = (
+    id: string
+  ): { sectionId: string; entityId: string; entityType: 'attribute' | 'group' } | null => {
+    const delimiterIndex = id.indexOf(':');
+    if (delimiterIndex === -1) {
+      return null;
+    }
+    const sectionId = id.slice(0, delimiterIndex);
+    const entityToken = id.slice(delimiterIndex + 1);
+    if (entityToken.startsWith(GROUP_SORTABLE_PREFIX)) {
+      return {
+        sectionId,
+        entityId: entityToken.slice(GROUP_SORTABLE_PREFIX.length),
+        entityType: 'group',
+      };
+    }
+    return {
+      sectionId,
+      entityId: entityToken,
+      entityType: 'attribute',
+    };
   };
 
   // Get the dragged attribute for the overlay
@@ -83,12 +102,15 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     
     const parsed = parseId(activeId);
     if (!parsed) return null;
+    if (parsed.entityType === 'group') {
+      return null;
+    }
     
-    const section = tree.sections.find(s => s.id === parsed.sectionId);
+    const section = tree.sections.find((s) => s.id === parsed.sectionId);
     if (!section) return null;
     
     // Check both original attributes and added attributes (transformations)
-    const attr = section.attributes.find(a => a.id === parsed.attributeId);
+    const attr = section.attributes.find((a) => a.id === parsed.entityId);
     return attr || null;
   };
 
@@ -125,7 +147,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     setDropIndicatorId(null);
     setActiveId(null);
     setPendingCrossSectionId(null);
-    
+
     const { active, over } = event;
     if (!over || active.id === over.id) {
       return;
@@ -133,8 +155,17 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
     const activeInfo = parseId(active.id as string);
     const overInfo = parseId(over.id as string);
-    
-    if (!activeInfo || !overInfo) return;
+
+    if (!activeInfo || !overInfo) {
+      return;
+    }
+
+    const activeData = active.data.current as any;
+
+    if (activeInfo.entityType === 'group' || activeData?.type === 'group') {
+      handleGroupDragEnd(activeInfo, overInfo, activeData, over?.data.current);
+      return;
+    }
 
     if (activeInfo.sectionId !== overInfo.sectionId) {
       const storeState = useTransformationStore.getState();
@@ -144,7 +175,8 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const activeAttrData = (active.data.current as any)?.attribute as DisplayAttribute | undefined;
       const overAttrData = (over.data.current as any)?.attribute as DisplayAttribute | undefined;
 
-      const draggedAttr = sourceSection?.attributes.find((a) => a.id === activeInfo.attributeId) || activeAttrData || null;
+      const draggedAttr =
+        sourceSection?.attributes.find((a) => a.id === activeInfo.entityId) || activeAttrData || null;
       if (!draggedAttr) {
         return;
       }
@@ -160,16 +192,19 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const destSectionOrder = attributeOrderMap.get(overInfo.sectionId)
         ? [...(attributeOrderMap.get(overInfo.sectionId) as string[])]
         : destSection
-          ? destSection.attributes.map((a) => a.key)
-          : [];
+        ? destSection.attributes.map((a) => a.key)
+        : [];
 
-      const dropTargetKey = overAttrData?.key
-        || destSection?.attributes.find((a) => a.id === overInfo.attributeId)?.key;
+      const dropTargetKey =
+        overAttrData?.key ||
+        destSection?.attributes.find((a) => a.id === overInfo.entityId)?.key;
 
       const existingIndex = destSectionOrder.indexOf(draggedKey);
       if (existingIndex !== -1) {
         destSectionOrder.splice(existingIndex, 1);
       }
+
+      const overSortable = (over.data.current as any)?.sortable;
 
       let insertIndex = destSectionOrder.length;
       if (dropTargetKey) {
@@ -177,11 +212,15 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         if (idx !== -1) {
           insertIndex = idx;
         }
+      } else if (typeof overSortable?.index === 'number') {
+        insertIndex = Math.min(Math.max(overSortable.index, 0), destSectionOrder.length);
       }
 
       const newOrder = [...destSectionOrder];
       newOrder.splice(insertIndex, 0, draggedKey);
       setAttributeOrder(overInfo.sectionId, newOrder);
+      const insertBeforeKey = newOrder[insertIndex + 1] ?? null;
+      const insertAfterKey = insertIndex > 0 ? newOrder[insertIndex - 1] ?? null : null;
 
       const allowTransformMoveTypes = new Set<TransformationType | string>([
         TransformationType.ADD_STATIC,
@@ -191,13 +230,19 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         TransformationType.MASK,
       ]);
 
-      const isTransformMove = [...allowTransformMoveTypes].some((type) => modificationTypes.has(type));
+      const isTransformMove = [...allowTransformMoveTypes].some((type) =>
+        modificationTypes.has(type)
+      );
 
       if (isTransformMove) {
-        const matchingModification = activeAttrData?.modifications.find((m) => allowTransformMoveTypes.has(m.type as TransformationType));
+        const matchingModification = activeAttrData?.modifications.find((m) =>
+          allowTransformMoveTypes.has(m.type as TransformationType)
+        );
 
         if (matchingModification) {
-          const transformation = storeState.transformations.find((t) => t.id === matchingModification.transformationId);
+          const transformation = storeState.transformations.find(
+            (t) => t.id === matchingModification.transformationId
+          );
 
           if (transformation) {
             const updatedParams = { ...(transformation.params as any) };
@@ -243,7 +288,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
         }
         if (transformation.type === TransformationType.DELETE_GROUP) {
           const params = transformation.params as DeleteGroupParams;
-          return params.attributes.some(({ key, path }) => key === draggedKey && path === draggedAttr.path);
+          return params.attributes.some(
+            ({ key, path }) => key === draggedKey && path === draggedAttr.path
+          );
         }
         return false;
       });
@@ -294,6 +341,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
           movedFromSectionId: activeInfo.sectionId,
           movedFromSectionLabel: sourceSection?.label,
           movedFromPath: draggedAttr.path,
+          insertBeforeKey,
+          insertAfterKey,
+          insertionIndex: insertIndex,
           pairedTransformationId: pairId,
         },
       });
@@ -301,35 +351,144 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       movedKeysRef.current.add(draggedKey);
 
       return;
-    } else {
-      // Same section reordering
-      const attributeOrder = useTransformationStore.getState().attributeOrder;
-      const currentOrder = attributeOrder.get(activeInfo.sectionId)
-        ? [...(attributeOrder.get(activeInfo.sectionId) as string[])]
-        : undefined;
-
-      if (!currentOrder || currentOrder.length === 0) {
-        // TreeSection will initialize and we can try again after state settles
-        return;
-      }
-
-      const activeSortable = (active.data.current as any)?.sortable;
-      const overSortable = (over.data.current as any)?.sortable;
-      const fromIndex = typeof activeSortable?.index === 'number' ? activeSortable.index : -1;
-      const toIndex = typeof overSortable?.index === 'number' ? overSortable.index : -1;
-
-      if (fromIndex === -1 || toIndex === -1) {
-        return;
-      }
-
-      const newOrder = arrayMove(currentOrder, fromIndex, toIndex);
-
-      if (newOrder.join(',') === currentOrder.join(',')) {
-        return;
-      }
-
-      setAttributeOrder(activeInfo.sectionId, newOrder);
     }
+
+    // Same section reordering
+    const attributeOrder = useTransformationStore.getState().attributeOrder;
+    const currentOrder = attributeOrder.get(activeInfo.sectionId)
+      ? [...(attributeOrder.get(activeInfo.sectionId) as string[])]
+      : undefined;
+
+    if (!currentOrder || currentOrder.length === 0) {
+      return;
+    }
+
+    const activeSortable = (active.data.current as any)?.sortable;
+    const overSortable = (over.data.current as any)?.sortable;
+    const fromIndex = typeof activeSortable?.index === 'number' ? activeSortable.index : -1;
+    const toIndex = typeof overSortable?.index === 'number' ? overSortable.index : -1;
+
+    if (fromIndex === -1 || toIndex === -1) {
+      return;
+    }
+
+    const newOrder = arrayMove(currentOrder, fromIndex, toIndex);
+
+    if (newOrder.join(',') === currentOrder.join(',')) {
+      return;
+    }
+
+    setAttributeOrder(activeInfo.sectionId, newOrder);
+  };
+
+  const handleGroupDragEnd = (
+    activeInfo: { sectionId: string; entityId: string; entityType: 'attribute' | 'group' },
+    overInfo: { sectionId: string; entityId: string; entityType: 'attribute' | 'group' } | null,
+    activeData: any,
+    overData: any
+  ) => {
+    if (!overInfo) {
+      return;
+    }
+
+    if (activeInfo.sectionId === overInfo.sectionId) {
+      return;
+    }
+
+    const sourceSection = tree.sections.find((section) => section.id === activeInfo.sectionId);
+    const destinationSection = tree.sections.find((section) => section.id === overInfo.sectionId);
+    if (!sourceSection || !destinationSection) {
+      return;
+    }
+
+    const groupAttributes = (activeData?.groupAttributes as DisplayAttribute[]) ?? [];
+    const fullGroupAttributes = groupAttributes;
+    if (fullGroupAttributes.length === 0) {
+      return;
+    }
+
+    const groupId = activeData?.groupId ?? activeInfo.entityId;
+    const groupLabel = activeData?.groupLabel ?? groupId;
+    const timestamp = Date.now();
+    const moveTransformationId = `t-${timestamp}-move-group-${groupId}`;
+    const suffixStart = groupId.indexOf('::');
+    const groupPathSuffix = suffixStart !== -1 ? groupId.slice(suffixStart + 2) : groupId;
+    const destinationGroupId = `${overInfo.sectionId}::${groupPathSuffix}`;
+
+    addTransformation({
+      id: moveTransformationId,
+      type: TransformationType.MOVE_GROUP,
+      order: 0,
+      sectionId: activeInfo.sectionId,
+      createdAt: new Date(),
+      status: TransformationStatus.ACTIVE,
+      params: {
+        type: TransformationType.MOVE_GROUP,
+        groupId,
+        groupLabel,
+        fromSectionId: activeInfo.sectionId,
+        fromSectionLabel: sourceSection.label,
+        toSectionId: overInfo.sectionId,
+        toSectionLabel: destinationSection.label,
+        toGroupId: destinationGroupId,
+        attributes: fullGroupAttributes.map((attribute) => ({
+          key: attribute.key,
+          value: attribute.value,
+          valueType: attribute.valueType,
+          path: attribute.path,
+          depth: attribute.depth,
+        })),
+      } satisfies MoveGroupParams,
+    });
+
+    const attributeOrder = useTransformationStore.getState().attributeOrder;
+    const sourceOrder = attributeOrder.get(activeInfo.sectionId);
+    if (sourceOrder) {
+      const filtered = sourceOrder.filter(
+        (key) => !fullGroupAttributes.some((attribute) => attribute.key === key)
+      );
+      if (filtered.length !== sourceOrder.length) {
+        setAttributeOrder(activeInfo.sectionId, filtered);
+      }
+    }
+
+    const destinationOrderRaw =
+      attributeOrder.get(overInfo.sectionId) ??
+      destinationSection.attributes.map((attribute) => attribute.key);
+
+    const groupKeys = fullGroupAttributes.map((attribute) => attribute.key);
+    const destinationOrder = destinationOrderRaw.filter((key) => !groupKeys.includes(key));
+
+    const dropTargetKey = (() => {
+      if (!overData) {
+        return null;
+      }
+      if (overData.type === 'group') {
+        const candidateKeys: string[] = Array.isArray(overData.groupAttributes)
+          ? overData.groupAttributes.map((attribute: DisplayAttribute) => attribute.key)
+          : [];
+        return candidateKeys.find((candidateKey: string) => destinationOrder.includes(candidateKey)) ?? null;
+      }
+      const attribute = overData.attribute as DisplayAttribute | undefined;
+      if (attribute && destinationOrder.includes(attribute.key)) {
+        return attribute.key;
+      }
+      return null;
+    })();
+
+    let insertIndex = destinationOrder.length;
+    if (dropTargetKey) {
+      const idx = destinationOrder.indexOf(dropTargetKey);
+      if (idx !== -1) {
+        insertIndex = idx;
+      }
+    }
+
+    const nextOrder = [...destinationOrder];
+    nextOrder.splice(insertIndex, 0, ...groupKeys);
+    setAttributeOrder(overInfo.sectionId, nextOrder);
+
+    fullGroupAttributes.forEach((attribute) => movedKeysRef.current.add(attribute.key));
   };
 
   return (

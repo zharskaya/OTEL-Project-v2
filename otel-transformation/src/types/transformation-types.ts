@@ -3,7 +3,7 @@
  * Defines all transformation types that can be applied to telemetry data
  */
 
-import { ResourceSpan, TelemetryTree } from './telemetry-types';
+import { ResourceSpan, TelemetryTree, ValueType } from './telemetry-types';
 
 export interface Transformation {
   id: string;
@@ -21,6 +21,7 @@ export enum TransformationType {
   ADD_SUBSTRING = 'add-substring',
   DELETE = 'delete',
   DELETE_GROUP = 'delete-group',
+  MOVE_GROUP = 'move-group',
   MASK = 'mask',
   RENAME_KEY = 'rename-key',
   RENAME_PREFIX = 'rename-prefix',
@@ -38,6 +39,7 @@ export type TransformationParams =
   | AddSubstringParams
   | DeleteParams
   | DeleteGroupParams
+  | MoveGroupParams
   | MaskParams
   | RenameKeyParams
   | RenamePrefixParams
@@ -51,6 +53,9 @@ export interface AddStaticParams {
   movedFromSectionId?: string;
   movedFromSectionLabel?: string;
   movedFromPath?: string;
+  insertBeforeKey?: string | null;
+  insertAfterKey?: string | null;
+  insertionIndex?: number;
   pairedTransformationId?: string;
 }
 
@@ -83,6 +88,24 @@ export interface DeleteGroupParams {
   attributes: Array<{
     path: string;
     key: string;
+  }>;
+}
+
+export interface MoveGroupParams {
+  type: TransformationType.MOVE_GROUP;
+  groupId: string;
+  groupLabel: string;
+  fromSectionId: string;
+  fromSectionLabel?: string;
+  toSectionId: string;
+  toSectionLabel?: string;
+  toGroupId?: string;
+  attributes: Array<{
+    path: string;
+    key: string;
+    value: string;
+    valueType: ValueType;
+    depth?: number;
   }>;
 }
 

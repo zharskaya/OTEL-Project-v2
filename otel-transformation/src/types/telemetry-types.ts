@@ -141,6 +141,12 @@ export interface DisplayAttribute {
   groupPrefix?: string;       // The common prefix for grouped attributes
   isExpanded?: boolean;       // Whether the group is expanded
   children?: DisplayAttribute[]; // Child attributes for groups
+  isMovedIn?: boolean;        // True if this attribute was moved into the section
+  movedFromSectionId?: string;
+  movedFromSectionLabel?: string;
+  insertBeforeKey?: string | null;
+  insertAfterKey?: string | null;
+  insertIndex?: number;
 }
 
 export enum ValueType {

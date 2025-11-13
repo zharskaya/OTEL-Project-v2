@@ -26,6 +26,7 @@ import {
   type AddStaticParams,
   type DeleteParams,
   type DeleteGroupParams,
+  type MoveGroupParams,
   type RenameKeyParams,
   type Transformation,
 } from '@/types/transformation-types';
@@ -203,7 +204,7 @@ export function AttributeRow({
     isDragging,
   } = useSortable({
     id: sortableId || attribute.id, // Use composite ID if provided, otherwise fall back to attribute ID
-    disabled: !isDraggable,
+    disabled: !isDraggable || attribute.depth > 0,
     data: {
       attribute,
     },
@@ -221,6 +222,27 @@ export function AttributeRow({
     }
     return false;
   });
+  const moveGroupTransformation = React.useMemo(() => {
+    return transformations.find((transformation) => {
+      if (transformation.type !== TransformationType.MOVE_GROUP) {
+        return false;
+      }
+      const params = transformation.params as MoveGroupParams;
+      return params.attributes.some((attributeEntry) => {
+        const { path, key } = attributeEntry;
+        return path === attribute.path || key === attribute.key;
+      });
+    }) ?? null;
+  }, [transformations, attribute.path, attribute.key]);
+  const moveGroupParams = moveGroupTransformation
+    ? (moveGroupTransformation.params as MoveGroupParams)
+    : null;
+  const isGroupMoveSource = Boolean(
+    moveGroupParams && moveGroupParams.fromSectionId === attribute.sectionId
+  );
+  const isGroupMoveDestination = Boolean(
+    moveGroupParams && moveGroupParams.toSectionId === attribute.sectionId
+  );
 
   // Check if this attribute has a mask transformation
   const maskTransformation = transformations.find(
@@ -322,6 +344,7 @@ export function AttributeRow({
   }, [isAddStatic, addTransformationRecord]);
   const hasAnyModification =
     isDeleted ||
+    isGroupMoveSource ||
     isMasked ||
     isRenamed ||
     activeModifications.length > 0 ||
@@ -387,19 +410,30 @@ export function AttributeRow({
         })
       : [];
 
-  const isMovedOut =
-    deleteParams && 'movedToSectionId' in deleteParams ? Boolean(deleteParams.movedToSectionId) : false;
+  const deleteMoveTargetSectionId =
+    deleteParams && 'movedToSectionId' in deleteParams
+      ? deleteParams.movedToSectionId
+      : undefined;
+  const isMovedOut = Boolean(deleteMoveTargetSectionId) || isGroupMoveSource;
 
-  const movedToSectionLabel =
-    isMovedOut && deleteParams && 'movedToSectionLabel' in deleteParams
-      ? formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId)
-    : null;
+  const movedToSectionLabel = (() => {
+    if (deleteParams && 'movedToSectionLabel' in deleteParams) {
+      return formatSectionDisplayName(deleteParams.movedToSectionLabel, deleteParams.movedToSectionId);
+    }
+    if (isGroupMoveSource && moveGroupParams) {
+      return formatSectionDisplayName(moveGroupParams.toSectionLabel, moveGroupParams.toSectionId);
+    }
+    return null;
+  })();
 
   const movedFromSectionLabel = isAddStatic && addStaticParams
     ? formatSectionDisplayName(addStaticParams.movedFromSectionLabel, addStaticParams.movedFromSectionId)
-    : null;
+    : isGroupMoveDestination && moveGroupParams
+      ? formatSectionDisplayName(moveGroupParams.fromSectionLabel, moveGroupParams.fromSectionId)
+      : null;
 
-  const isMovedIn = Boolean(addStaticParams?.movedFromSectionId);
+  const isMovedIn = Boolean(addStaticParams?.movedFromSectionId) || isGroupMoveDestination;
+  const isEffectivelyDeleted = isDeleted || isGroupMoveSource;
 
   const cancelHoverHide = () => {
     if (hoverHideTimeoutRef.current) {
@@ -435,7 +469,7 @@ export function AttributeRow({
   };
 
   React.useEffect(() => {
-    if (!selection || isDeleted || isMasked) {
+    if (!selection || isEffectivelyDeleted || isMasked) {
       return;
     }
 
@@ -451,7 +485,7 @@ export function AttributeRow({
 
     setHoverSelection(null);
     cancelHoverHide();
-  }, [selection, isDeleted, isMasked, isRenamed]);
+  }, [selection, isEffectivelyDeleted, isMasked, isRenamed]);
 
   React.useEffect(() => () => cancelHoverHide(), []);
 
@@ -679,7 +713,7 @@ export function AttributeRow({
   };
 
   const handleValueMouseEnter = () => {
-    if (isDeleted) {
+    if (isEffectivelyDeleted) {
       setIsValueHovered(true);
       return;
     }
@@ -700,7 +734,7 @@ export function AttributeRow({
   };
 
   const handleValueKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (isDeleted) {
+    if (isEffectivelyDeleted) {
       return;
     }
 
@@ -863,6 +897,31 @@ export function AttributeRow({
   };
 
   const getModificationLabel = () => {
+    if (moveGroupTransformation && moveGroupParams) {
+      if (isGroupMoveDestination) {
+        return null;
+      }
+      if (isGroupMoveSource) {
+        return null;
+      }
+      const text = isGroupMoveSource ? 'MOVED OUT' : isGroupMoveDestination ? 'MOVED IN' : 'MOVE';
+      const badgeClass = isGroupMoveSource
+        ? 'bg-red-600 text-white'
+        : isGroupMoveDestination
+          ? 'bg-green-600 text-white'
+          : 'bg-blue-600 text-white';
+      return (
+        <div className="flex flex-col items-end gap-1 text-right">
+          <span className={`${BADGE_BASE_CLASS} ${badgeClass}`}>{text}</span>
+          {isGroupMoveDestination && movedFromSectionLabel ? (
+            <span className="font-mono text-[10px] text-gray-500 leading-none">
+              from {movedFromSectionLabel}
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
     if (isDeleted) {
       if (isGroupDeletion) {
         return null;
@@ -969,7 +1028,7 @@ export function AttributeRow({
   const getRowBackgroundClass = () => '';
 
   const getTextClass = () => {
-    if (isDeleted) return 'line-through text-gray-400';
+    if (isEffectivelyDeleted) return 'line-through text-gray-400';
     return 'text-gray-900';
   };
 
@@ -1007,7 +1066,7 @@ export function AttributeRow({
   };
 
   const activeSelection = selection ?? hoverSelection;
-  const isValueInteractive = !isDeleted;
+  const isValueInteractive = !isEffectivelyDeleted;
   const hasActiveSelection = !!activeSelection;
   const shouldShowMaskSelector = hasActiveSelection && isValueInteractive;
   const isHighlightedByQueue = useMemo(
@@ -1022,13 +1081,14 @@ export function AttributeRow({
   const isRowHoverActive =
     isHovered || shouldShowMaskSelector || isHighlightedByQueue || isEditingAddStaticValue;
   const shouldShowSelectAction =
-    !isDeleted &&
+    !isEffectivelyDeleted &&
     (!hasAnyModification || isRenamed || isMasked || isAddSubstring || isMovedIn);
-  const shouldShowEditAddedAction = !isDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
+  const shouldShowEditAddedAction = !isEffectivelyDeleted && isAddStatic && !isMovedIn && !attribute.isRawOTTL;
   const shouldShowValueTooltip =
     isValueHovered && !hasActiveSelection && isValueInteractive && !isActionHovered && !isEditingAddStaticValue;
   const valueTooltipMessage = isAddStatic && !isMovedIn ? 'Click to edit static value' : 'Select to transform';
-  const dragCursorClass = isDraggable ? 'cursor-grab active:cursor-grabbing' : '';
+  const dragCursorClass =
+    isDraggable && attribute.depth === 0 ? 'cursor-grab active:cursor-grabbing' : '';
   const shouldHighlightRow =
     isRowHoverActive || isHighlightedByQueue || isHighlightedByInput || isHighlightedByOutput;
   const rowHighlightClass = shouldHighlightRow ? 'bg-gray-300/60' : '';
@@ -1133,8 +1193,8 @@ export function AttributeRow({
       <div
         ref={setNodeRef}
         style={style}
-        {...(isDraggable ? sortableAttributes : {})}
-        {...(isDraggable ? listeners : {})}
+        {...(isDraggable && attribute.depth === 0 ? sortableAttributes : {})}
+        {...(isDraggable && attribute.depth === 0 ? listeners : {})}
     className={`relative flex items-center py-1.5 mb-0.5 transition-colors leading-none ${modifiedBackgroundClass} ${rowHighlightClass} ${dragCursorClass}`}
         onMouseEnter={handleRowPointerEnter}
         onMouseLeave={handleRowPointerLeave}
@@ -1143,25 +1203,23 @@ export function AttributeRow({
         onBlurCapture={handleRowPointerLeave}
       >
         {/* Drag handle - positioned absolutely on the left, vertically centered, shown on hover */}
-        {isHovered && !isDeleted && (
+        {isHovered && !isEffectivelyDeleted && isDraggable && attribute.depth === 0 ? (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <div
-                  className={`absolute top-1/2 -translate-y-1/2 text-gray-600 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                  className="absolute top-1/2 -translate-y-1/2 text-gray-600 cursor-grab active:cursor-grabbing"
                   style={{ left: `${4 + attribute.depth * 16}px` }}
                 >
                   <GripVertical className="h-4 w-4" />
                 </div>
               </TooltipTrigger>
-              {isDraggable && (
-                <TooltipContent>
-                  <p>Drag to move</p>
-                </TooltipContent>
-              )}
+              <TooltipContent>
+                <p>Drag to move</p>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
+        ) : null}
 
         {/* For raw OTTL, merge columns and show full statement */}
         {attribute.isRawOTTL ? (
@@ -1308,9 +1366,11 @@ export function AttributeRow({
                     <Tooltip>
                       <TooltipTrigger asChild>
                   <span
-                    className={`font-mono text-xs leading-none ${isDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'}`}
+                    className={`font-mono text-xs leading-none ${
+                      isEffectivelyDeleted ? 'text-gray-400 line-through cursor-default' : 'text-gray-900 cursor-pointer'
+                    }`}
                     onClick={() => {
-                      if (isDeleted) {
+                      if (isEffectivelyDeleted) {
                         return;
                       }
                       handleStartRenaming();
@@ -1319,7 +1379,7 @@ export function AttributeRow({
                     {displayKey ?? attribute.key}
                   </span>
                       </TooltipTrigger>
-                {isHovered && !isDeleted && (
+                {isHovered && !isEffectivelyDeleted && (
                   <TooltipContent>
                     <p>Click to rename</p>
                   </TooltipContent>
@@ -1402,16 +1462,11 @@ export function AttributeRow({
                 {attribute.value}
               </span>
             </span>
-          ) : isDeleted ? (
+          ) : isEffectivelyDeleted ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
               <span className={`font-mono text-xs ${getTextClass()} leading-none`}>
                 {attribute.value}
               </span>
-              {movedToSectionLabel && movedKeys.has(attribute.key) && (
-                <span className="font-mono text-[10px] text-gray-500 leading-none">
-                  moved to {movedToSectionLabel}
-                </span>
-              )}
             </span>
           ) : activeModificationTypes.has('add-substring') ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
@@ -1420,31 +1475,6 @@ export function AttributeRow({
                 valueType={attribute.valueType}
                 className={`font-mono text-xs ${getTextClass()} leading-none`}
               />
-              {(() => {
-                const substringTransformation = transformations.find(
-                  t => t.type === 'add-substring' &&
-                  (t.params as any).newKey === attribute.key &&
-                  t.sectionId === attribute.sectionId
-                );
-                if (substringTransformation) {
-                  const params = substringTransformation.params as any;
-                  const rangeLabel = formatRangeLabel(
-                    params.substringStart,
-                    params.substringEnd
-                  );
-                  return (
-                    <span className="font-mono text-[10px] text-gray-400 leading-none">
-                      SUBSTR({params.sourceKey}, {rangeLabel})
-                    </span>
-                  );
-                }
-                return null;
-              })()}
-              {movedFromSectionLabel && (
-                <span className="font-mono text-[10px] text-gray-500 leading-none">
-                  moved from {movedFromSectionLabel}
-                </span>
-              )}
             </span>
           ) : (
             <span 
@@ -1456,7 +1486,7 @@ export function AttributeRow({
                 valueType={attribute.valueType}
                 className={`font-mono text-xs ${getTextClass()} leading-none`}
               />
-              {movedFromSectionLabel && (
+              {movedFromSectionLabel && !isGroupMoveDestination && !isGroupMoveSource && (
                 <span className="font-mono text-[10px] text-gray-500 leading-none">
                   moved from {movedFromSectionLabel}
                 </span>
@@ -1479,7 +1509,12 @@ export function AttributeRow({
         {getModificationLabel()}
 
         {/* Action buttons - positioned absolutely on the right */}
-        {isHovered && !isRenaming && !isEditingAddStaticValue && !shouldShowMaskSelector && !isGroupDeletion && (
+        {isHovered &&
+          !isRenaming &&
+          !isEditingAddStaticValue &&
+          !shouldShowMaskSelector &&
+          !isGroupDeletion &&
+          !isEffectivelyDeleted && (
           <div
             className="absolute inset-y-0 right-0 flex items-center gap-1 bg-gray-900 px-2"
             onMouseEnter={() => setIsActionHovered(true)}
@@ -1487,28 +1522,26 @@ export function AttributeRow({
             onPointerEnter={() => setIsActionHovered(true)}
             onPointerLeave={() => setIsActionHovered(false)}
           >
-            {!isDeleted && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => {
-                        if (!isDeleted) {
-                          handleStartRenaming();
-                        }
-                      }}
-                      className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
-                      aria-label="Rename key"
-                    >
-                      <Wrench className="h-4 w-4" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Rename key</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => {
+                      if (!isEffectivelyDeleted) {
+                        handleStartRenaming();
+                      }
+                    }}
+                    className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 cursor-pointer"
+                    aria-label="Rename key"
+                  >
+                    <Wrench className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Rename key</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {shouldShowSelectAction && (
               <TooltipProvider>
                 <Tooltip>

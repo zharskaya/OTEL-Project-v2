@@ -1,9 +1,16 @@
-import { ResourceSpan, TelemetryTree, DisplayAttribute, ModificationColor } from '@/types/telemetry-types';
+import {
+  ResourceSpan,
+  TelemetryTree,
+  DisplayAttribute,
+  ModificationColor,
+  ValueType,
+} from '@/types/telemetry-types';
 import {
   Transformation,
   TransformationResult,
   TransformationType,
   TransformationStatus,
+  type MoveGroupParams,
 } from '@/types/transformation-types';
 import { TelemetryParser } from '@/lib/telemetry/telemetry-parser';
 
@@ -203,6 +210,126 @@ export class TransformationEngine {
         };
 
         attributeEntries.forEach(({ key }) => removeAttribute(key));
+        break;
+      }
+
+      case TransformationType.MOVE_GROUP: {
+        const moveParams = params as MoveGroupParams;
+        const appendModification = (sectionId: string, key: string) => {
+          const modKey = `${sectionId}:${key}`;
+          if (!modifications.has(modKey)) {
+            modifications.set(modKey, []);
+          }
+          modifications.get(modKey)!.push({
+            transformationId: transformation.id,
+            type: 'move-group',
+            label: 'MOVE',
+            color: ModificationColor.BLUE,
+          });
+        };
+
+        moveParams.attributes.forEach(({ key }) => {
+          appendModification(moveParams.fromSectionId, key);
+          appendModification(moveParams.toSectionId, key);
+        });
+
+        const removeAttribute = (sectionId: string, key: string) => {
+          if (sectionId.includes('resource')) {
+            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== key);
+            return;
+          }
+          if (sectionId.includes('span-attributes')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              span.attributes = span.attributes.filter((attr) => attr.key !== key);
+            }
+            return;
+          }
+          if (sectionId.includes('span-info')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              const spanRecord = span as unknown as Record<string, unknown>;
+              delete spanRecord[key];
+            }
+          }
+        };
+
+        const normalizeStringValue = (value: string) => {
+          const trimmed = value.trim();
+          if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
+            return trimmed.slice(1, -1);
+          }
+          return value;
+        };
+
+        const toAnyValue = (value: string, valueType: ValueType) => {
+          switch (valueType) {
+            case ValueType.NUMBER: {
+              const numeric = Number(value);
+              return Number.isFinite(numeric)
+                ? { doubleValue: numeric }
+                : { stringValue: normalizeStringValue(value) };
+            }
+            case ValueType.BOOLEAN:
+              if (value === 'true' || value === 'false') {
+                return { boolValue: value === 'true' };
+              }
+              return { stringValue: normalizeStringValue(value) };
+            default:
+              return { stringValue: normalizeStringValue(value) };
+          }
+        };
+
+        const toPrimitive = (value: string, valueType: ValueType) => {
+          switch (valueType) {
+            case ValueType.NUMBER: {
+              const numeric = Number(value);
+              return Number.isFinite(numeric) ? numeric : normalizeStringValue(value);
+            }
+            case ValueType.BOOLEAN:
+              if (value === 'true' || value === 'false') {
+                return value === 'true';
+              }
+              return normalizeStringValue(value);
+            default:
+              return normalizeStringValue(value);
+          }
+        };
+
+        const addAttribute = (sectionId: string, key: string, value: string, valueType: ValueType) => {
+          if (sectionId.includes('resource')) {
+            data.resource.attributes = data.resource.attributes.filter((attr) => attr.key !== key);
+            data.resource.attributes.push({
+              key,
+              value: toAnyValue(value, valueType),
+            });
+            return;
+          }
+          if (sectionId.includes('span-attributes')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              span.attributes = span.attributes.filter((attr) => attr.key !== key);
+              span.attributes.push({
+                key,
+                value: toAnyValue(value, valueType),
+              });
+            }
+            return;
+          }
+          if (sectionId.includes('span-info')) {
+            const span = data.scopeSpans[0]?.spans[0];
+            if (span) {
+              const spanRecord = span as unknown as Record<string, unknown>;
+              spanRecord[key] = toPrimitive(value, valueType);
+            }
+          }
+        };
+
+        moveParams.attributes.forEach(({ key }) => removeAttribute(moveParams.fromSectionId, key));
+        moveParams.attributes.forEach(({ key, value, valueType }) =>
+          addAttribute(moveParams.toSectionId, key, value, valueType)
+        );
+
         break;
       }
       

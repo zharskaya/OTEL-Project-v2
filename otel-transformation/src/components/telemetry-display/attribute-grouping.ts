@@ -158,3 +158,20 @@ export function collectAttributesFromGroup(node: GroupedGroupNode): DisplayAttri
   return result;
 }
 
+export function collectAttributesWithGroups(
+  node: GroupedGroupNode,
+  parents: GroupedGroupNode[] = []
+): Array<{ attribute: DisplayAttribute; groups: GroupedGroupNode[] }> {
+  const result: Array<{ attribute: DisplayAttribute; groups: GroupedGroupNode[] }> = [];
+
+  node.children.forEach((child) => {
+    if (child.type === 'group') {
+      result.push(...collectAttributesWithGroups(child, [...parents, node]));
+    } else {
+      result.push({ attribute: child.attribute, groups: [...parents, node] });
+    }
+  });
+
+  return result;
+}
+

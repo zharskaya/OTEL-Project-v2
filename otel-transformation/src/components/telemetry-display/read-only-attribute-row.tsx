@@ -10,7 +10,12 @@ import {
   useHoveredOutputAttributeId,
   useTransformations,
 } from '@/lib/state/hooks';
-import type { Transformation, TransformationStatus, RenameKeyParams } from '@/types/transformation-types';
+import type {
+  Transformation,
+  TransformationStatus,
+  RenameKeyParams,
+  MoveGroupParams,
+} from '@/types/transformation-types';
 import { buildAttributeHighlightTokens, createSectionKeyToken } from './highlight-utils';
 
 function getTransformationAttributePath(transformation: Transformation): string | undefined {
@@ -49,6 +54,17 @@ export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttribut
   const hoveredInputAttributeId = useHoveredInputAttributeId();
   const hoveredOutputAttributeId = useHoveredOutputAttributeId();
   const transformations = useTransformations();
+  const moveGroupParamsById = React.useMemo(() => {
+    const map = new Map<string, MoveGroupParams>();
+    transformations.forEach((transformation) => {
+      if (transformation.type !== 'move-group') {
+        return;
+      }
+      map.set(transformation.id, transformation.params as MoveGroupParams);
+    });
+    return map;
+  }, [transformations]);
+
 
   const relatedTransformationIds = React.useMemo(
     () =>
@@ -150,11 +166,16 @@ export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttribut
     isHighlightFromTransformations || isHighlightFromAdditional || isHighlightedByInput || isHighlightedByOutput;
 
   // Check if this attribute was added or modified
-  const isAdded = attribute.modifications.some(m => 
-    m.type === 'add' || 
-    m.type === 'add-static' || 
-    m.type === 'add-substring'
+  const isAdded = attribute.modifications.some(
+    (m) => m.type === 'add' || m.type === 'add-static' || m.type === 'add-substring'
   );
+  const isGroupMoveAdded = attribute.modifications.some((modification) => {
+    if (modification.type !== 'move-group') {
+      return false;
+    }
+    const params = moveGroupParamsById.get(modification.transformationId);
+    return params != null && params.toSectionId === attribute.sectionId;
+  });
   const isModified = attribute.modifications.some(m => 
     m.type === 'modify' || 
     m.type === 'mask' || 
@@ -162,7 +183,7 @@ export function ReadOnlyAttributeRow({ attribute, displayKey }: ReadOnlyAttribut
   );
 
   const baseBackgroundClass = (() => {
-    if (isAdded) return 'bg-green-200/30';
+    if (isAdded || isGroupMoveAdded) return 'bg-green-200/30';
     if (isModified) return 'bg-blue-200/30';
     return '';
   })();

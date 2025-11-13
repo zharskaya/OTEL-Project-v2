@@ -4,7 +4,9 @@ import React, { useState } from 'react';
 import {
   SortableContext,
   verticalListSortingStrategy,
+  useSortable,
 } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { TelemetrySection, ValueType, ModificationColor, DisplayAttribute } from '@/types/telemetry-types';
 import { AttributeRow } from './attribute-row';
 import {
@@ -28,13 +30,29 @@ import {
   type RenamePrefixParams,
   type DeleteParams,
   type DeleteGroupParams,
+  type MoveGroupParams,
   type Transformation,
 } from '@/types/transformation-types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Wrench, Trash2, Check, X, Undo2 } from 'lucide-react';
+import { Wrench, Trash2, Check, X, Undo2, GripVertical } from 'lucide-react';
 
 const GROUP_BADGE_CLASS =
-  'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
+  'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide leading-none';
+const GROUP_SORTABLE_PREFIX = 'group::';
+
+const formatSectionDisplayName = (label?: string, id?: string): string | null => {
+  if (label && label.trim().length > 0) {
+    return label;
+  }
+  if (!id) {
+    return null;
+  }
+  return id
+    .replace(/\./g, ' › ')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
 interface TreeSectionProps {
   section: TelemetrySection;
@@ -80,7 +98,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   // Get newly added attributes from transformations
   const addedStaticOrSubstring = React.useMemo(() => {
     return sectionTransformations
-      .filter(t => t.type === TransformationType.ADD_STATIC || t.type === TransformationType.ADD_SUBSTRING)
+      .filter((t) => t.type === TransformationType.ADD_STATIC || t.type === TransformationType.ADD_SUBSTRING)
       .map((t, idx) => {
         const params = t.params as any;
         // Create unique ID using stable transformation ID
@@ -108,6 +126,21 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
             sourceAttrPath = sourceAttr.path; // Track source attribute path
           }
         }
+        let movedFromSectionId: string | undefined;
+        let movedFromSectionLabel: string | undefined;
+        let insertBeforeKey: string | null | undefined;
+        let insertAfterKey: string | null | undefined;
+        let insertIndex: number | undefined;
+        let isMovedIn = false;
+
+        if (t.type === TransformationType.ADD_STATIC) {
+          movedFromSectionId = params.movedFromSectionId as string | undefined;
+          movedFromSectionLabel = params.movedFromSectionLabel as string | undefined;
+          insertBeforeKey = 'insertBeforeKey' in params ? (params.insertBeforeKey as string | null | undefined) : undefined;
+          insertAfterKey = 'insertAfterKey' in params ? (params.insertAfterKey as string | null | undefined) : undefined;
+          insertIndex = typeof params.insertionIndex === 'number' ? params.insertionIndex : undefined;
+          isMovedIn = Boolean(movedFromSectionId);
+        }
         
         return {
           id: uniqueId,
@@ -118,6 +151,12 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
           valueType: ValueType.STRING,
           depth: 0,
           sourceAttributePath: sourceAttrPath, // Track which attribute this was derived from
+          isMovedIn,
+          movedFromSectionId,
+          movedFromSectionLabel,
+          insertBeforeKey: insertBeforeKey ?? null,
+          insertAfterKey: insertAfterKey ?? null,
+          insertIndex,
           modifications: [{
             transformationId: t.id,
             type: t.type,
@@ -128,15 +167,60 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       });
   }, [sectionTransformations, section.id, section.attributes]);
 
+  const movedGroupAttributes = React.useMemo(() => {
+    const syntheticAttributes: DisplayAttribute[] = [];
+
+    transformations.forEach((transformation) => {
+      if (transformation.type !== TransformationType.MOVE_GROUP) {
+        return;
+      }
+      const params = transformation.params as MoveGroupParams;
+      if (params.toSectionId !== section.id) {
+        return;
+      }
+
+      params.attributes.forEach((attribute, index) => {
+        const uniqueId = `move-group-${transformation.id}-${index}`;
+        const syntheticPathBase = attribute.path || `${params.groupId}.${attribute.key}`;
+        const syntheticPath = `${params.toGroupId ?? params.toSectionId}::${transformation.id}::${syntheticPathBase}`;
+
+        syntheticAttributes.push({
+          id: uniqueId,
+          path: syntheticPath,
+          sectionId: section.id,
+          key: attribute.key,
+          value: attribute.value,
+          valueType: attribute.valueType,
+          depth: attribute.depth ?? 0,
+          modifications: [
+            {
+              transformationId: transformation.id,
+              type: TransformationType.MOVE_GROUP,
+              label: 'MOVE',
+              color: ModificationColor.BLUE,
+            },
+          ],
+          isMovedIn: true,
+          movedFromSectionId: params.fromSectionId,
+          movedFromSectionLabel: params.fromSectionLabel,
+        });
+      });
+    });
+
+    return syntheticAttributes;
+  }, [section.id, transformations]);
+
   const rawOTTLAttributes: DisplayAttribute[] = [];
 
   // Combine original attributes with added attributes based on creation logic
   const baseAttributes = React.useMemo(() => {
     const substringAttrs = addedStaticOrSubstring.filter(a => a.sourceAttributePath);
     const staticAddedAttrs = addedStaticOrSubstring.filter(a => !a.sourceAttributePath);
+    const movedStaticAttrs = staticAddedAttrs.filter((attribute) => attribute.isMovedIn);
+    const directStaticAttrs = staticAddedAttrs.filter((attribute) => !attribute.isMovedIn);
+    const movedAttributes = [...movedStaticAttrs, ...movedGroupAttributes];
 
-    const staticAtTop = [...staticAddedAttrs].reverse();
-    const rawOttlEntries = [...rawOTTLAttributes].reverse();
+    const staticAtTop = [...directStaticAttrs].reverse();
     const orderedAttributes: DisplayAttribute[] = [];
 
     for (const attr of section.attributes) {
@@ -145,9 +229,46 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       orderedAttributes.push(attr);
     }
 
+    const finalOrdered = [...orderedAttributes];
+    const insertMovedAttribute = (collection: DisplayAttribute[], item: DisplayAttribute) => {
+      const beforeKey = item.insertBeforeKey ?? null;
+      if (beforeKey) {
+        const targetIndex = collection.findIndex((candidate) => candidate.key === beforeKey);
+        if (targetIndex !== -1) {
+          collection.splice(targetIndex, 0, item);
+          return true;
+        }
+      }
+
+      const afterKey = item.insertAfterKey ?? null;
+      if (afterKey) {
+        for (let index = collection.length - 1; index >= 0; index -= 1) {
+          if (collection[index].key === afterKey) {
+            collection.splice(index + 1, 0, item);
+            return true;
+          }
+        }
+      }
+
+      if (typeof item.insertIndex === 'number' && !Number.isNaN(item.insertIndex)) {
+        const boundedIndex = Math.max(0, Math.min(item.insertIndex, collection.length));
+        collection.splice(boundedIndex, 0, item);
+        return true;
+      }
+
+      return false;
+    };
+
+    movedAttributes.forEach((attribute) => {
+      const placed = insertMovedAttribute(finalOrdered, attribute);
+      if (!placed) {
+        finalOrdered.push(attribute);
+      }
+    });
+
     // Raw OTTL entries are not shown in the Input section.
-    return [...staticAtTop, ...orderedAttributes];
-  }, [addedStaticOrSubstring, rawOTTLAttributes, section.attributes]);
+    return [...staticAtTop, ...finalOrdered];
+  }, [addedStaticOrSubstring, movedGroupAttributes, rawOTTLAttributes, section.attributes]);
   
   // Initialize stored order if it doesn't exist (only runs once per section, ever)
   const hasInitialized = React.useRef(false);
@@ -240,13 +361,34 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
         const attribute = keyToAttributes.get(key)?.[0];
         if (!attribute) continue;
 
+        const displayAttribute = attribute as DisplayAttribute;
         const firstModification = attribute.modifications[0]?.type;
-        const sourcePath = (attribute as any).sourceAttributePath as string | undefined;
+        const sourcePath = (displayAttribute as any).sourceAttributePath as string | undefined;
         const hasAddModification = attribute.modifications.some((modification) =>
           modification.type === 'add' ||
           modification.type === 'add-static' ||
           modification.type === 'raw-ottl'
         );
+        const isMovedInAttribute = Boolean(displayAttribute.isMovedIn);
+
+        if (isMovedInAttribute) {
+          const beforeKey = displayAttribute.insertBeforeKey ?? null;
+          const afterKey = displayAttribute.insertAfterKey ?? null;
+          let placed = false;
+          if (beforeKey && updated.includes(beforeKey)) {
+            const idx = updated.indexOf(beforeKey);
+            updated.splice(idx, 0, key);
+            placed = true;
+          } else if (afterKey && updated.includes(afterKey)) {
+            const idx = updated.indexOf(afterKey);
+            updated.splice(idx + 1, 0, key);
+            placed = true;
+          }
+          if (!placed) {
+            insertUsingNaturalOrder(key);
+          }
+          continue;
+        }
 
         if (firstModification === 'add-substring' && sourcePath) {
           const sourceAttribute = baseAttributes.find((attr) => attr.path === sourcePath);
@@ -360,7 +502,15 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
   );
 
   // Create sortable items list - all attributes except deleted ones get composite IDs
-  const sortableItems = allAttributes.map(attr => `${section.id}:${attr.id}`);
+  const sortableItems = React.useMemo(
+    () =>
+      flattenedItems.map((item) =>
+        item.type === 'group'
+          ? `${section.id}:${GROUP_SORTABLE_PREFIX}${item.node.id}`
+          : `${section.id}:${item.node.attribute.id}`
+      ),
+    [flattenedItems, section.id]
+  );
 
   const toggleExpand = () => {
     setIsExpanded(!isExpanded);
@@ -433,6 +583,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                     if (item.type === 'group') {
                       const groupId = item.node.id;
                       const isCollapsed = Boolean(collapsedGroups[groupId]);
+                      const sortableId = `${section.id}:${GROUP_SORTABLE_PREFIX}${groupId}`;
                       return (
                         <AttributeGroupRow
                           key={`group-${groupId}`}
@@ -440,6 +591,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
                           isCollapsed={isCollapsed}
                           sectionId={section.id}
                           renameTransformation={renamePrefixByGroupId.get(groupId) ?? null}
+                          sortableId={sortableId}
                           onToggle={() =>
                             setCollapsedGroups((previous) => ({
                               ...previous,
@@ -501,6 +653,7 @@ interface AttributeGroupRowProps {
   onToggle: () => void;
   sectionId: string;
   renameTransformation: Transformation | null;
+  sortableId: string;
 }
 
 function AttributeGroupRow({
@@ -509,6 +662,7 @@ function AttributeGroupRow({
   onToggle,
   sectionId,
   renameTransformation,
+  sortableId,
 }: AttributeGroupRowProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [isRenaming, setIsRenaming] = React.useState(false);
@@ -575,6 +729,66 @@ function AttributeGroupRow({
     });
     return map;
   }, [transformations]);
+
+  const moveGroupTransformation = React.useMemo(() => {
+    return (
+      transformations.find((transformation) => {
+        if (transformation.type !== TransformationType.MOVE_GROUP) {
+          return false;
+        }
+        const params = transformation.params as MoveGroupParams;
+        if (params.groupId === node.id) {
+          return true;
+        }
+        if (params.toGroupId && params.toGroupId === node.id) {
+          return true;
+        }
+        if (params.toSectionId !== sectionId) {
+          return false;
+        }
+        const nodeKeys = groupedAttributes.map((attribute) => attribute.key).sort();
+        const paramsKeys = params.attributes.map((attribute) => attribute.key).sort();
+        if (nodeKeys.length !== paramsKeys.length) {
+          return false;
+        }
+        return nodeKeys.every((key, index) => key === paramsKeys[index]);
+      }) ?? null
+    );
+  }, [groupedAttributes, sectionId, transformations, node.id]);
+  const moveGroupParams = moveGroupTransformation
+    ? (moveGroupTransformation.params as MoveGroupParams)
+    : null;
+  const isGroupMoveSource = moveGroupParams?.fromSectionId === sectionId;
+  const isGroupMoveDestination = moveGroupParams?.toSectionId === sectionId;
+  const isMoveGroupActive =
+    moveGroupTransformation?.status === TransformationStatus.ACTIVE ||
+    moveGroupTransformation?.status === undefined;
+  const moveBadgeClass = (() => {
+    const baseClass = isGroupMoveSource
+      ? 'bg-red-600 text-white'
+      : isGroupMoveDestination
+        ? 'bg-green-600 text-white'
+        : 'bg-blue-600 text-white';
+    return isMoveGroupActive ? baseClass : 'bg-gray-300/60 text-gray-500';
+  })();
+  const moveBadgeLabel = isGroupMoveSource ? 'MOVED OUT' : isGroupMoveDestination ? 'MOVED IN' : 'MOVE';
+  const moveContextLabel = React.useMemo(() => {
+    if (!moveGroupParams) {
+      return null;
+    }
+    if (isGroupMoveDestination) {
+      const label = formatSectionDisplayName(
+        moveGroupParams.fromSectionLabel,
+        moveGroupParams.fromSectionId
+      );
+      return label ? `moved from ${label}` : null;
+    }
+    if (isGroupMoveSource) {
+      const label = formatSectionDisplayName(moveGroupParams.toSectionLabel, moveGroupParams.toSectionId);
+      return label ? `moved to ${label}` : null;
+    }
+    return null;
+  }, [isGroupMoveDestination, isGroupMoveSource, moveGroupParams]);
 
   const isHighlighted =
     (renameTransformation && highlightedTransformationIds.includes(renameTransformation.id)) || false;
@@ -695,8 +909,10 @@ function AttributeGroupRow({
     updateTransformation,
   ]);
 
-  const handleUndoRenameGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const handleUndoRenameGroup = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.stopPropagation();
+    }
     if (!renameTransformation) {
       return;
     }
@@ -735,8 +951,10 @@ function AttributeGroupRow({
     setIsRenaming(false);
   };
 
-  const handleUndoDeleteGroup = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
+  const handleUndoDeleteGroup = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.stopPropagation();
+    }
 
     const idsToRemove = new Set<string>();
 
@@ -836,6 +1054,30 @@ function AttributeGroupRow({
     }
   };
 
+  const handleUndoMoveGroup = (event?: React.MouseEvent<HTMLButtonElement>) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (!moveGroupTransformation || !moveGroupParams) {
+      return;
+    }
+
+    removeTransformation(moveGroupTransformation.id);
+
+    const groupKeys = moveGroupParams.attributes.map(({ key }) => key);
+    const storeState = useTransformationStore.getState();
+    const attributeOrderMap = storeState.attributeOrder;
+
+    const sourceOrder = attributeOrderMap.get(moveGroupParams.fromSectionId) ?? [];
+    const destinationOrder = attributeOrderMap.get(moveGroupParams.toSectionId) ?? [];
+
+    const restoredSourceOrder = [...sourceOrder.filter((key) => !groupKeys.includes(key)), ...groupKeys];
+    const updatedDestinationOrder = destinationOrder.filter((key) => !groupKeys.includes(key));
+
+    setAttributeOrder(moveGroupParams.fromSectionId, restoredSourceOrder);
+    setAttributeOrder(moveGroupParams.toSectionId, updatedDestinationOrder);
+  };
+
   const handleRenameCancel = (event?: React.MouseEvent<HTMLButtonElement>) => {
     if (event) {
       event.stopPropagation();
@@ -927,7 +1169,8 @@ function AttributeGroupRow({
   const isDeletedByAncestor =
     groupDeleteParams.length > 0 &&
     groupDeleteParams.every((params) => params.groupId && params.groupId !== node.id);
-  const allowGroupActions = (!isGroupDeleted || hasDirectAttributes) && !isDeletedByAncestor;
+  const allowGroupActions =
+    (((!isGroupDeleted || hasDirectAttributes) && !isDeletedByAncestor) || isGroupMoveSource || isGroupMoveDestination);
   const showActionButtons = allowGroupActions && (isRenaming || isHovered);
   const showRenameBadge = Boolean(renamePrefixParams);
   const showDeleteBadge = isGroupDeleted && hasDirectAttributes && !isDeletedByAncestor;
@@ -937,17 +1180,62 @@ function AttributeGroupRow({
       : 'bg-indigo-600 text-white';
   const deleteBadgeClassName = isGroupDeleteActive ? 'bg-red-600 text-white' : 'bg-gray-300/60 text-gray-500';
   const isGroupRenamed = Boolean(renamePrefixParams);
-  const baseBackgroundClass = isGroupDeleted || isGroupRenamed ? 'bg-gray-100' : '';
+  const isGroupMovedIn = Boolean(moveGroupParams && moveGroupParams.toSectionId === sectionId);
+  const groupUndoAction = React.useMemo<'delete' | 'rename' | 'move' | null>(() => {
+    if (isGroupRenamed) {
+      return 'rename';
+    }
+    if (isGroupMoveSource || isGroupMoveDestination) {
+      return 'move';
+    }
+    if (isGroupDeleted) {
+      return 'delete';
+    }
+    return null;
+  }, [isGroupDeleted, isGroupMoveDestination, isGroupMoveSource, isGroupRenamed]);
+  const handleUndoGroupTransformation = React.useCallback(
+    (event?: React.MouseEvent<HTMLButtonElement>) => {
+      if (event) {
+        event.stopPropagation();
+      }
+      if (groupUndoAction === 'rename') {
+        handleUndoRenameGroup();
+        return;
+      }
+      if (groupUndoAction === 'move') {
+        handleUndoMoveGroup();
+        return;
+      }
+      if (groupUndoAction === 'delete') {
+        handleUndoDeleteGroup();
+      }
+    },
+    [groupUndoAction, handleUndoDeleteGroup, handleUndoMoveGroup, handleUndoRenameGroup]
+  );
+  const baseBackgroundClass =
+    isGroupDeleted || isGroupRenamed || isGroupMoveSource || isGroupMoveDestination
+      ? isGroupMovedIn || (isGroupMoveDestination && moveGroupTransformation?.status === TransformationStatus.ACTIVE)
+        ? 'bg-gray-100'
+        : 'bg-gray-100'
+      : '';
   const hoverBackgroundClass = isHovered || isHighlighted ? 'bg-gray-300/60' : '';
   const rowBackgroundClass = [baseBackgroundClass, hoverBackgroundClass].filter(Boolean).join(' ');
-  const canRenameGroup = allowGroupActions && !isGroupDeleted;
-  const labelColorClass = isGroupDeleted ? 'text-gray-400 line-through' : 'text-gray-900';
+  const canRenameGroup = allowGroupActions && !isGroupDeleted && !isGroupMoveSource;
+  const labelColorClass =
+    isGroupDeleted || isGroupMoveSource ? 'text-gray-400 line-through' : 'text-gray-900';
   const labelBaseClass = `font-mono text-xs leading-none ${labelColorClass}`;
   const badges: React.ReactNode[] = [];
-  if (showDeleteBadge) {
+  if (showDeleteBadge && !isGroupMoveDestination) {
     badges.push(
       <span key="delete" className={`${GROUP_BADGE_CLASS} ${deleteBadgeClassName}`}>
         DELETE
+      </span>
+    );
+  }
+  if (moveGroupParams) {
+    badges.push(
+      <span key="move" className={`${GROUP_BADGE_CLASS} ${moveBadgeClass}`}>
+        {moveBadgeLabel}
       </span>
     );
   }
@@ -959,12 +1247,62 @@ function AttributeGroupRow({
     );
   }
 
+  const {
+    attributes: sortableAttributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({
+    id: sortableId,
+    data: {
+      type: 'group',
+      groupId: node.id,
+      groupLabel: displayLabel,
+      groupAttributes: groupedAttributes,
+    },
+    disabled: !allowGroupActions,
+  });
+  const rowStyle = React.useMemo<React.CSSProperties>(
+    () => ({
+      transform: CSS.Transform.toString(transform),
+      transition: transition ?? undefined,
+    }),
+    [transform, transition]
+  );
+  const showDragHandle = allowGroupActions && isHovered && !isRenaming;
+
   return (
     <div
       className={`relative mb-0.5 flex w-full items-center py-1.5 transition-colors ${rowBackgroundClass}`}
+      ref={setNodeRef}
+      style={rowStyle}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {showDragHandle ? (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="absolute top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 cursor-grab active:cursor-grabbing"
+                style={{ left: `${4 + node.depth * 16}px` }}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+                {...sortableAttributes}
+                {...listeners}
+                aria-label="Drag group"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Drag to move</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : null}
       <div
         role="button"
         tabIndex={0}
@@ -1054,11 +1392,20 @@ function AttributeGroupRow({
               )}
             </div>
           </div>
-          <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">
-            {groupedAttributes.length} {groupedAttributes.length === 1 ? 'key' : 'keys'}
+          <div className="flex-1 flex flex-col justify-center leading-none font-mono text-xs text-gray-500">
+            <span>
+              {groupedAttributes.length} {groupedAttributes.length === 1 ? 'key' : 'keys'}
+            </span>
+            {moveContextLabel ? (
+              <span className="text-[10px] text-gray-500 leading-tight">
+                {moveContextLabel}
+              </span>
+            ) : null}
           </div>
         </div>
-        {badges.length > 0 ? <div className="flex items-center gap-2 pr-2">{badges}</div> : null}
+        {badges.length > 0 ? (
+          <div className="flex flex-col items-end gap-1 pr-2 text-right">{badges}</div>
+        ) : null}
       </div>
       {allowGroupActions ? (
         <div
@@ -1068,62 +1415,49 @@ function AttributeGroupRow({
         >
           {isRenaming ? null : (
             <>
-              {isGroupDeleted ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={handleUndoDeleteGroup}
-                        className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                        aria-label="Undo delete"
-                      >
-                        <Undo2 className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Undo delete</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
+              {!isGroupDeleted ? (
                 <>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          onClick={handleRenameGroup}
-                          className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                          aria-label="Rename key"
-                        >
-                          <Wrench className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Rename key</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                  {isGroupRenamed ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            onClick={handleUndoRenameGroup}
-                            className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
-                            aria-label="Undo rename"
-                          >
-                            <Undo2 className="h-4 w-4" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Undo rename</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
+                  {canRenameGroup ? (
+                    <>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={handleRenameGroup}
+                              className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                              aria-label="Rename key"
+                            >
+                              <Wrench className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Rename key</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {!isGroupRenamed && !isGroupMoveDestination ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={handleDeleteGroup}
+                                className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                aria-label="Delete key prefix"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Delete key prefix</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {!canRenameGroup && !isGroupMoveDestination ? (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1141,9 +1475,28 @@ function AttributeGroupRow({
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                  )}
+                  ) : null}
                 </>
-              )}
+              ) : null}
+              {groupUndoAction ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleUndoGroupTransformation}
+                        className="rounded-md p-1.5 bg-gray-900 text-white transition-colors hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                        aria-label={groupUndoAction === 'rename' ? 'Undo' : 'Undo group transformation'}
+                      >
+                        <Undo2 className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{groupUndoAction === 'rename' ? 'Undo' : groupUndoAction === 'move' ? 'Undo move' : 'Undo delete'}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
             </>
           )}
         </div>

@@ -14,13 +14,10 @@ import {
   TransformationType,
   type DeleteParams,
   type DeleteGroupParams,
+  type MoveGroupParams,
   type RenamePrefixParams,
   type Transformation,
-  TransformationStatus,
 } from '@/types/transformation-types';
-
-const GROUP_BADGE_CLASS =
-  'inline-flex h-4 items-center justify-center rounded px-1.5 text-[10px] font-semibold uppercase tracking-wide';
 
 interface ReadOnlyTreeSectionProps {
   section: TelemetrySection;
@@ -48,6 +45,17 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
       ),
     [transformations]
   );
+
+  const moveGroupByTransformationId = React.useMemo(() => {
+    const map = new Map<string, MoveGroupParams>();
+    transformations.forEach((transformation) => {
+      if (transformation.type !== TransformationType.MOVE_GROUP) {
+        return;
+      }
+      map.set(transformation.id, transformation.params as MoveGroupParams);
+    });
+    return map;
+  }, [transformations]);
 
   const deleteTransformationsByAttributePath = React.useMemo(() => {
     const map = new Map<string, Transformation>();
@@ -113,11 +121,13 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
                   const isCollapsed = Boolean(collapsedGroups[groupId]);
                   return (
                     <ReadOnlyAttributeGroupRow
+                      sectionId={section.id}
                       key={`group-${groupId}`}
                       node={item.node}
                       isCollapsed={isCollapsed}
                       renameTransformation={renamePrefixByGroupId.get(item.node.id) ?? null}
                       deleteTransformationsByAttributePath={deleteTransformationsByAttributePath}
+                      moveGroupParamsById={moveGroupByTransformationId}
                       onToggle={() =>
                         setCollapsedGroups((previous) => ({
                           ...previous,
@@ -150,27 +160,26 @@ export function ReadOnlyTreeSection({ section }: ReadOnlyTreeSectionProps) {
 }
 
 interface ReadOnlyAttributeGroupRowProps {
+  sectionId: string;
   node: GroupedGroupNode;
   isCollapsed: boolean;
   onToggle: () => void;
   renameTransformation: Transformation | null;
   deleteTransformationsByAttributePath: Map<string, Transformation>;
+  moveGroupParamsById: Map<string, MoveGroupParams>;
 }
 
 function ReadOnlyAttributeGroupRow({
+  sectionId,
   node,
   isCollapsed,
   onToggle,
   renameTransformation,
   deleteTransformationsByAttributePath,
+  moveGroupParamsById,
 }: ReadOnlyAttributeGroupRowProps) {
-  const hasDirectAttributes = React.useMemo(
-    () => node.children.some((child) => child.type === 'attribute'),
-    [node]
-  );
   const groupedAttributes = React.useMemo(() => collectAttributesFromGroup(node), [node]);
   const isRenamed = Boolean(renameTransformation);
-  const isActiveRename = renameTransformation?.status === TransformationStatus.ACTIVE;
   const isGroupDeleted =
     groupedAttributes.length > 0 &&
     groupedAttributes.every(
@@ -178,44 +187,32 @@ function ReadOnlyAttributeGroupRow({
         deleteTransformationsByAttributePath.has(attribute.path) ||
         attribute.modifications.some((modification) => modification.type === TransformationType.DELETE)
     );
-  const groupDeleteTransformations = groupedAttributes
-    .map((attribute) => deleteTransformationsByAttributePath.get(attribute.path))
-    .filter((transformation): transformation is Transformation => Boolean(transformation));
-  const groupDeleteParams = groupDeleteTransformations
-    .filter((transformation) => transformation.type === TransformationType.DELETE_GROUP)
-    .map((transformation) => transformation.params as DeleteGroupParams);
-  const isGroupDeleteActive =
-    groupDeleteTransformations.length > 0 &&
-    groupDeleteTransformations.every((transformation) => transformation.status === TransformationStatus.ACTIVE);
-  const isDeletedByAncestor =
-    groupDeleteParams.length > 0 &&
-    groupDeleteParams.every((params) => params.groupId && params.groupId !== node.id);
-  const renameBadgeClassName = isActiveRename ? 'bg-indigo-600 text-white' : 'bg-gray-300/60 text-gray-500';
-  const deleteBadgeClassName = isGroupDeleteActive ? 'bg-red-600 text-white' : 'bg-gray-300/60 text-gray-500';
-  const showRenameBadge = isRenamed;
-  const showDeleteBadge = isGroupDeleted && hasDirectAttributes && !isDeletedByAncestor;
-  const baseBackgroundClass = isGroupDeleted || isRenamed ? 'bg-gray-100' : '';
+  const isGroupMovedIn = React.useMemo(() => {
+    for (const attribute of groupedAttributes) {
+      const modifications = attribute.modifications ?? [];
+      for (const modification of modifications) {
+        if (modification.type !== 'move-group') {
+          continue;
+        }
+        const moveParams = moveGroupParamsById.get(modification.transformationId);
+        if (moveParams && moveParams.toSectionId === sectionId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [groupedAttributes, moveGroupParamsById, sectionId]);
+  const baseBackgroundClass = (() => {
+    if (isGroupMovedIn) return 'bg-green-200/30';
+    if (isRenamed) return 'bg-blue-200/30';
+    if (isGroupDeleted) return 'bg-red-200/30';
+    return '';
+  })();
   const hoverBackgroundClass = 'hover:bg-gray-300/60';
   const rowBackgroundClass = [baseBackgroundClass, hoverBackgroundClass].filter(Boolean).join(' ');
   const labelClassName = isGroupDeleted
     ? 'font-mono text-xs text-gray-400 leading-none line-through'
     : 'font-mono text-xs text-gray-900 leading-none';
-  const badges: React.ReactNode[] = [];
-  if (showDeleteBadge) {
-    badges.push(
-      <span key="delete" className={`${GROUP_BADGE_CLASS} ${deleteBadgeClassName}`}>
-        DELETE
-      </span>
-    );
-  }
-  if (showRenameBadge) {
-    badges.push(
-      <span key="rename" className={`${GROUP_BADGE_CLASS} ${renameBadgeClassName}`}>
-        RENAME
-      </span>
-    );
-  }
-
   return (
     <button
       type="button"
@@ -234,7 +231,6 @@ function ReadOnlyAttributeGroupRow({
       <div className="flex-1 flex items-center leading-none font-mono text-xs text-gray-500">
         {node.attributeCount} {node.attributeCount === 1 ? 'key' : 'keys'}
       </div>
-      {badges.length > 0 ? <div className="flex items-center gap-2 pr-2">{badges}</div> : null}
     </button>
   );
 }
