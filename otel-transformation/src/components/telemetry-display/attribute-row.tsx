@@ -1067,7 +1067,7 @@ export function AttributeRow({
     : '';
   const substringSourceKey = addSubstringParams?.sourceKey ?? '';
   const substringFormula = addSubstringParams
-    ? `= SUBSTR (${substringSourceKey}, ${substringRangeLabel})`
+    ? `SUBSTR (${substringSourceKey}, ${substringRangeLabel})`
     : '';
 
   const style = {
@@ -1473,6 +1473,11 @@ export function AttributeRow({
               <span className="font-mono text-[10px] text-gray-400 line-through leading-none">
                 {attribute.value}
               </span>
+              {isAddSubstring && addSubstringParams && (
+                <span className="font-mono text-[10px] text-gray-500 leading-tight">
+                  {substringFormula}
+                </span>
+              )}
             </span>
           ) : isEffectivelyDeleted ? (
             <span ref={valueRef} className="flex flex-col gap-1 leading-none">
