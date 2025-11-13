@@ -24,6 +24,7 @@ import {
   type DeleteGroupParams,
   type MoveGroupParams,
 } from '@/types/transformation-types';
+import { getAttributeOrderToken } from '@/lib/attribute-order';
 
 interface TelemetryTreeProps {
   tree: TelemetryTreeType;
@@ -221,9 +222,9 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const destSectionOrder = attributeOrderMap.get(overInfo.sectionId)
         ? [...(attributeOrderMap.get(overInfo.sectionId) as string[])]
         : destSection
-        ? destSection.attributes.map((a) => a.path)
+        ? destSection.attributes.map((attribute) => getAttributeOrderToken(attribute))
         : [];
-      const draggedToken = draggedAttr.path || draggedId;
+      const draggedToken = getAttributeOrderToken(draggedAttr);
       const existingTokenIndex = destSectionOrder.indexOf(draggedToken);
       if (existingTokenIndex !== -1) {
         destSectionOrder.splice(existingTokenIndex, 1);
@@ -288,7 +289,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
 
         const sourceOrder = attributeOrderMap.get(activeInfo.sectionId);
         if (sourceOrder) {
-          const filtered = sourceOrder.filter((id) => id !== draggedId);
+          const filtered = sourceOrder.filter((token) => token !== draggedToken);
           if (filtered.length !== sourceOrder.length) {
             setAttributeOrder(activeInfo.sectionId, filtered);
           }
@@ -428,7 +429,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
       const attributeOrder = useTransformationStore.getState().attributeOrder;
       const currentOrder = attributeOrder.get(sectionId)
         ? [...(attributeOrder.get(sectionId) as string[])]
-        : section.attributes.map((attribute) => attribute.path);
+        : section.attributes.map((attribute) => getAttributeOrderToken(attribute));
 
       if (currentOrder.length === 0) {
         return;
@@ -727,7 +728,7 @@ export function TelemetryTree({ tree }: TelemetryTreeProps) {
     // Update the token-based order
     const destinationOrderRaw =
       attributeOrder.get(overInfo.sectionId) ??
-      destinationSection.attributes.map((attribute) => attribute.path);
+      destinationSection.attributes.map((attribute) => getAttributeOrderToken(attribute));
 
     const destinationAttributes = [...destinationSection.attributes];
     fullGroupAttributes.forEach((attribute) => {

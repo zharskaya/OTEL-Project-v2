@@ -28,6 +28,7 @@ import {
   useHoveredInputAttributeId,
   useHoveredOutputAttributeId,
 } from '@/lib/state/hooks';
+import { getAttributeOrderToken } from '@/lib/attribute-order';
 import { useTransformationStore } from '@/lib/state/transformation-store';
 import {
   TransformationType,
@@ -362,7 +363,7 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
     const currentStoredOrder = useTransformationStore.getState().attributeOrder.get(section.id);
 
     if (!currentStoredOrder || currentStoredOrder.length === 0) {
-      const initialTokenOrder = baseAttributes.map((attribute) => attribute.path);
+      const initialTokenOrder = baseAttributes.map((attribute) => getAttributeOrderToken(attribute));
       setAttributeOrder(section.id, initialTokenOrder);
     }
 
@@ -543,9 +544,10 @@ export function TreeSection({ section, dropIndicatorId, activeId, pendingDeletio
       .map((token) => resolveTokenToId(token))
       .filter((id): id is string => id != null);
 
-    const tokensForDeduped = dedupedOrder.map(
-      (id) => idToAttribute.get(id)?.path ?? id
-    );
+    const tokensForDeduped = dedupedOrder.map((id) => {
+      const attribute = idToAttribute.get(id);
+      return attribute ? getAttributeOrderToken(attribute) : id;
+    });
 
     const idsMatch =
       resolvedStoredIds.length === dedupedOrder.length &&
